@@ -1,36 +1,32 @@
 # Inventory Management System
 
-An ASTRAVA studio demonstration project exploring how small businesses can manage products, stock levels, and inventory movement.
+An **ASTRAVA studio demonstration project** exploring practical inventory management for small businesses.
 
-## Goal
+## Purpose
 
-Build a practical application for maintaining product records, tracking stock changes, and identifying items that need attention.
+Help a business maintain product records, understand current stock levels, record stock changes, and identify items that need attention.
 
-## MVP candidates
+## Proposed capabilities
 
-- Dashboard with inventory summaries
-- Product creation, editing, search, and categories
+The initial scope being considered includes:
+
+- Inventory dashboard and stock summaries
+- Product creation, editing, search, and categorization
 - Stock-in, stock-out, and controlled adjustments
 - Low-stock visibility
-- Supplier records, if in scope
 - Stock movement history
-- Basic reports
+- Optional supplier records and basic reports
 
-The project owner must confirm the actual MVP before implementation. Do not assume every candidate is required.
+The final MVP will be defined before implementation. These items describe proposed scope, not completed functionality.
 
-## Status
+## Project status
 
-**Initial setup / planning.** This README does not imply that features are implemented or deployed.
+**Initial setup and planning.** No application functionality, technology stack, or deployment is implied by this repository's current state.
 
-## Start here
+## Project context
 
-1. Clone this repository and open its root folder in your editor.
-2. Follow [Contributor Onboarding](docs/ONBOARDING.md).
-3. Read [Project Context](docs/PROJECT_CONTEXT.md).
-4. Follow the [Shared ASTRAVA Studio Working Standard](docs/ASTRAVA_STUDIO_STANDARD.md).
-5. Confirm the feature scope, stack, and architecture with the project owner before scaffolding or installing dependencies.
-6. Use the skills already installed in your agent environment when relevant. Do not copy skill packs or create a duplicate skill-management system in this repository.
+See [Project Context](docs/PROJECT_CONTEXT.md) for target users, workflows, business rules to decide, constraints, and current project decisions.
 
-Setup commands will be added after the technology stack is selected.
+---
 
-Built as an ASTRAVA studio demonstration project, not a client engagement.
+An ASTRAVA studio demonstration project, not a client engagement.
