@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
     "prisma:generate": "npm run prisma:generate --workspace=backend",
     "prisma:migrate": "npm run prisma:migrate --workspace=backend",
-    "prisma:seed": "npm run prisma:seed --workspace=backend"
+    "prisma:seed": "npm run prisma:seed --workspace=backend",
+    "deploy:frontend": "npm run build:frontend && firebase deploy --only hosting"
   }
 }
