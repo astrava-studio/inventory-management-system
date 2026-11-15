@@ -3,15 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "packages/*",
-    "apps/*"
+    "backend",
+    "frontend"
   ],
   "scripts": {
-    "dev:server": "npm run dev --workspace=apps/server",
-    "dev:client": "npm run dev --workspace=apps/client",
-    "build": "npm run build --workspaces --if-present",
-    "db:migrate": "npm run prisma:migrate --workspace=apps/server",
-    "db:generate": "npm run prisma:generate --workspace=apps/server",
-    "db:seed": "npm run prisma:seed --workspace=apps/server"
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "typecheck:backend": "npm run typecheck --workspace=backend",
+    "typecheck:frontend": "npm run typecheck --workspace=frontend",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "prisma:generate": "npm run prisma:generate --workspace=backend",
+    "prisma:migrate": "npm run prisma:migrate --workspace=backend",
+    "prisma:seed": "npm run prisma:seed --workspace=backend"
   }
 }
