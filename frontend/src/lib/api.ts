@@ -42,13 +42,26 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     return (await res.text()) as unknown as T;
   }
 
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new ApiError(data.message || 'API request failed', res.status, data.details || data.errors);
+  let data: any;
+  const rawText = await res.text();
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    throw new ApiError(
+      `Backend API unreachable (${res.status} ${res.statusText || 'Not Found'}). The backend server is not running on this domain.`,
+      res.status
+    );
   }
 
-  return data;
+  if (!res.ok) {
+    throw new ApiError(
+      data?.message || `API request failed with status ${res.status}`,
+      res.status,
+      data?.details || data?.errors
+    );
+  }
+
+  return data as T;
 }
 
 export const api = {
