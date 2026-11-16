@@ -88,6 +88,9 @@ export const getProducts = async (
       };
     });
 
+    // Edge cache & Stale-While-Revalidate for near-instant refreshes
+    res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=30');
+
     res.json({ products: enriched });
   } catch (error) {
     next(error);

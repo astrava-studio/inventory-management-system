@@ -21,14 +21,22 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab }) => {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [data, setData] = useState<DashboardData | null>(() => {
+    try {
+      const cached = sessionStorage.getItem('astrava_cache_dashboard');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isLoading, setIsLoading] = useState(!data);
 
   const fetchKpis = async () => {
-    setIsLoading(true);
+    if (!data) setIsLoading(true);
     try {
       const res = await api.get<DashboardData>('/dashboard/kpis');
       setData(res);
+      sessionStorage.setItem('astrava_cache_dashboard', JSON.stringify(res));
     } catch (err) {
       console.error('Failed to load dashboard KPIs:', err);
     } finally {

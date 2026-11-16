@@ -13,32 +13,36 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('inventory_token'));
+  const [user, setUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('inventory_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  // If token and user are already present in localStorage, unblock UI immediately (0ms latency on refresh)
+  const [isLoading, setIsLoading] = useState<boolean>(() => !localStorage.getItem('inventory_token'));
 
   useEffect(() => {
     const savedToken = localStorage.getItem('inventory_token');
     const savedUser = localStorage.getItem('inventory_user');
 
     if (savedToken && savedUser) {
-      try {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-        // Verify with server in background
-        api.get<{ user: User }>('/auth/me')
-          .then((res) => {
-            setUser(res.user);
-            localStorage.setItem('inventory_user', JSON.stringify(res.user));
-          })
-          .catch(() => {
-            logout();
-          })
-          .finally(() => setIsLoading(false));
-        return;
-      } catch {
-        logout();
-      }
+      // Revalidate with server quietly in background (Stale-While-Revalidate)
+      api.get<{ user: User }>('/auth/me')
+        .then((res) => {
+          setUser(res.user);
+          localStorage.setItem('inventory_user', JSON.stringify(res.user));
+        })
+        .catch(() => {
+          logout();
+        });
+      return;
     }
     setIsLoading(false);
   }, []);

@@ -103,6 +103,9 @@ export const getDashboardKpis = async (
       },
     });
 
+    // Edge cache & Stale-While-Revalidate for near-instant refreshes
+    res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=30');
+
     res.json({
       kpis: {
         totalValuation: Math.round(totalValuation * 100) / 100,

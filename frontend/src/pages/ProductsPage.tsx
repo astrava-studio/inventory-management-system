@@ -21,8 +21,21 @@ export const ProductsPage: React.FC = () => {
   const { user } = useAuth();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const cached = sessionStorage.getItem('astrava_cache_products');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    try {
+      return !sessionStorage.getItem('astrava_cache_products');
+    } catch {
+      return true;
+    }
+  });
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
 
@@ -52,7 +65,7 @@ export const ProductsPage: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
 
   const fetchProducts = async () => {
-    setIsLoading(true);
+    if (products.length === 0) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
@@ -60,6 +73,9 @@ export const ProductsPage: React.FC = () => {
 
       const res = await api.get<{ products: Product[] }>(`/products?${params.toString()}`);
       setProducts(res.products);
+      if (!search && selectedCategory === 'ALL') {
+        sessionStorage.setItem('astrava_cache_products', JSON.stringify(res.products));
+      }
     } catch (err) {
       console.error('Failed to fetch products:', err);
     } finally {

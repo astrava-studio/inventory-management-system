@@ -19,10 +19,18 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction
 ): void => {
-  if (err instanceof AppError) {
-    res.status(err.statusCode).json({
+  if (err instanceof AppError || (err && typeof (err as any).statusCode === 'number')) {
+    const statusCode = (err as any).statusCode || (err instanceof AppError ? err.statusCode : 400);
+    res.status(statusCode).json({
       message: err.message,
-      details: err.details,
+      details: (err as any).details,
+    });
+    return;
+  }
+
+  if (err instanceof SyntaxError && 'status' in err && (err as any).status === 400) {
+    res.status(400).json({
+      message: 'Malformed JSON payload in request body',
     });
     return;
   }

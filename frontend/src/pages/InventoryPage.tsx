@@ -12,10 +12,30 @@ export const InventoryPage: React.FC = () => {
   const { user } = useAuth();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [locations, setLocations] = useState<Location[]>(() => {
+    try {
+      const cached = sessionStorage.getItem('astrava_cache_locations');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
-  const [inventory, setInventory] = useState<InventoryMatrixRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [inventory, setInventory] = useState<InventoryMatrixRow[]>(() => {
+    try {
+      const cached = sessionStorage.getItem('astrava_cache_inventory');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    try {
+      return !sessionStorage.getItem('astrava_cache_inventory');
+    } catch {
+      return true;
+    }
+  });
   const [lowStockOnly, setLowStockOnly] = useState(false);
 
   // Adjustment Modal
@@ -34,13 +54,14 @@ export const InventoryPage: React.FC = () => {
     try {
       const res = await api.get<{ locations: Location[] }>('/locations');
       setLocations(res.locations);
+      sessionStorage.setItem('astrava_cache_locations', JSON.stringify(res.locations));
     } catch (err) {
       console.error('Failed to load locations:', err);
     }
   };
 
   const fetchInventory = async () => {
-    setIsLoading(true);
+    if (inventory.length === 0) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (selectedLocationId !== 'ALL') params.append('locationId', selectedLocationId);
@@ -50,6 +71,9 @@ export const InventoryPage: React.FC = () => {
         `/inventory?${params.toString()}`
       );
       setInventory(res.inventory);
+      if (selectedLocationId === 'ALL' && !lowStockOnly) {
+        sessionStorage.setItem('astrava_cache_inventory', JSON.stringify(res.inventory));
+      }
     } catch (err) {
       console.error('Failed to load inventory matrix:', err);
     } finally {
