@@ -122,8 +122,9 @@ export const getDashboardKpis = async (
         pendingSosCount,
         activeLocationsCount,
       },
+      lowStockAlerts: lowStockItems,
       lowStockItems,
-      recentMovements,
+      recentMovements: recentMovements || [],
     });
   } catch (error) {
     next(error);

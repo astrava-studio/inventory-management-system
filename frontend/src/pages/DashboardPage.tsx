@@ -36,6 +36,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
     fetchDashboard(true);
   };
 
+  const lowStockAlerts = (data as any)?.lowStockAlerts || (data as any)?.lowStockItems || [];
+  const recentMovements = data?.recentMovements || [];
+  const kpis = data?.kpis;
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -88,7 +92,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
             <DollarSign className="h-4 w-4 text-blue-400" />
           </div>
           <div className="text-xl font-bold text-white mt-2 tabular-nums">
-            {formatCurrency(data?.kpis.totalValuation, user?.currency)}
+            {formatCurrency(kpis?.totalValuation, user?.currency)}
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">
             Across active facilities
@@ -102,7 +106,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
             <Package className="h-4 w-4 text-purple-400" />
           </div>
           <div className="text-xl font-bold text-white mt-2 tabular-nums">
-            {data?.kpis.totalActiveSkus ?? 0}
+            {kpis?.totalActiveSkus ?? 0}
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">Catalog inventory items</span>
         </Card>
@@ -114,7 +118,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
             <AlertTriangle className="h-4 w-4 text-amber-400" />
           </div>
           <div className="text-xl font-bold text-amber-400 mt-2 tabular-nums">
-            {data?.kpis.lowStockSkuCount ?? 0}
+            {kpis?.lowStockSkuCount ?? (kpis as any)?.lowStockCount ?? lowStockAlerts.length}
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">At or below reorder point</span>
         </Card>
@@ -126,7 +130,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
             <FileDown className="h-4 w-4 text-indigo-400" />
           </div>
           <div className="text-xl font-bold text-white mt-2 tabular-nums">
-            {data?.kpis.openPosCount ?? 0}
+            {kpis?.openPosCount ?? 0}
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">Draft & Ordered inbound</span>
         </Card>
@@ -138,7 +142,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
             <FileUp className="h-4 w-4 text-emerald-400" />
           </div>
           <div className="text-xl font-bold text-white mt-2 tabular-nums">
-            {data?.kpis.pendingSosCount ?? 0}
+            {kpis?.pendingSosCount ?? 0}
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">Awaiting fulfillment</span>
         </Card>
@@ -154,13 +158,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
                 <AlertTriangle className="h-4 w-4 text-amber-400" />
                 <span>Low-Stock Attention Required</span>
                 <Badge variant="warning" size="sm">
-                  {data?.lowStockAlerts.length ?? 0} Items
+                  {lowStockAlerts.length} Items
                 </Badge>
               </div>
             }
             subtitle="Products where available quantity is at or below defined safety reorder points"
           >
-            {data?.lowStockAlerts.length === 0 ? (
+            {lowStockAlerts.length === 0 ? (
               <div className="text-center py-8 text-slate-400 text-xs">
                 All SKUs have sufficient buffer inventory above reorder points.
               </div>
@@ -177,7 +181,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
-                    {data?.lowStockAlerts.map((item) => (
+                    {lowStockAlerts.map((item: any) => (
                       <tr key={item.productId} className="hover:bg-slate-800/30 transition-colors">
                         <td className="py-3 px-4">
                           <span className="font-semibold text-white block tabular-nums">{item.sku}</span>
@@ -233,13 +237,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
               </button>
             }
           >
-            {data?.recentMovements.length === 0 ? (
+            {recentMovements.length === 0 ? (
               <div className="text-center py-8 text-slate-400 text-xs">
                 No stock movements logged yet.
               </div>
             ) : (
               <div className="space-y-3">
-                {data?.recentMovements.map((mov) => {
+                {recentMovements.map((mov) => {
                   const isPositive = mov.quantityDelta > 0;
                   return (
                     <div
@@ -251,25 +255,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
                           <span className="font-semibold text-slate-200 tabular-nums">
                             {mov.product?.sku}
                           </span>
-                          <span className="text-[10px] text-slate-400">• {mov.location?.code}</span>
+                          <span className="text-[11px] text-slate-400 truncate max-w-[130px]">
+                            {mov.product?.name}
+                          </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 truncate max-w-[180px]">
-                          {mov.notes || mov.type}
-                        </p>
-                        <span className="text-[10px] text-slate-400 block tabular-nums">
-                          {new Date(mov.createdAt).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                          <span>{mov.location?.code}</span>
+                          <span>•</span>
+                          <span className="capitalize">{mov.type.replace('_', ' ').toLowerCase()}</span>
+                        </div>
                       </div>
 
-                      <div className="text-right shrink-0">
+                      <div className="text-right">
                         <span
-                          className={`inline-flex items-center font-bold tabular-nums text-xs px-2 py-0.5 rounded ${
-                            isPositive
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          className={`inline-flex items-center font-bold tabular-nums ${
+                            isPositive ? 'text-emerald-400' : 'text-rose-400'
                           }`}
                         >
                           {isPositive ? (
@@ -279,8 +279,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
                           )}
                           {isPositive ? `+${mov.quantityDelta}` : mov.quantityDelta}
                         </span>
-                        <span className="text-[10px] text-slate-400 block mt-1 tabular-nums">
-                          Bal: {mov.afterOnHand}
+                        <span className="block text-[10px] text-slate-400">
+                          bal: {mov.afterOnHand}
                         </span>
                       </div>
                     </div>
