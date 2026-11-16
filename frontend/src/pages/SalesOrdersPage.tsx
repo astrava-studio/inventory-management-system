@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { SalesOrder, Location, Product, SOStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useInventoryData } from '../context/InventoryDataContext';
+import { formatCurrency } from '../lib/currency';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -299,7 +300,7 @@ export const SalesOrdersPage: React.FC = () => {
                       {so.items.length} lines ({so.totalUnits} units)
                     </td>
                     <td className="py-3 px-4 text-right tabular-nums font-semibold text-white">
-                      ${so.totalAmount?.toFixed(2)}
+                      {formatCurrency(so.totalAmount, user?.currency)}
                     </td>
                     <td className="py-3 px-4 text-right space-x-1">
                       {so.status === 'DRAFT' && isManagerOrAdmin && (
@@ -516,7 +517,7 @@ export const SalesOrdersPage: React.FC = () => {
             <div className="flex justify-between items-center text-xs font-semibold text-slate-200 pt-2 border-t border-slate-800/80">
               <span>Total Order Value:</span>
               <span className="text-sm font-bold text-emerald-400 tabular-nums">
-                ${totalCalculatedRevenue.toFixed(2)}
+                {formatCurrency(totalCalculatedRevenue, user?.currency)}
               </span>
             </div>
           </div>

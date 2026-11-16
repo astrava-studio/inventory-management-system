@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useInventoryData } from '../../context/InventoryDataContext';
-import { Search, LogOut, ShieldCheck, UserCheck, User, Zap, RefreshCw } from 'lucide-react';
+import { Search, LogOut, ShieldCheck, UserCheck, User, Zap, RefreshCw, Building } from 'lucide-react';
 
 interface TopBarProps {
   onSearchSku?: (sku: string) => void;
@@ -72,7 +72,12 @@ export const TopBar: React.FC<TopBarProps> = ({ onSearchSku }) => {
         {getRoleBadge(user?.role)}
 
         <div className="text-right hidden sm:block">
-          <span className="text-xs font-medium text-slate-200 block">{user?.fullName || 'User'}</span>
+          <div className="flex items-center gap-1.5 justify-end">
+            <Building className="h-3 w-3 text-blue-400" />
+            <span className="text-xs font-semibold text-white block">
+              {user?.workspaceName || 'Workspace'}
+            </span>
+          </div>
           <span className="text-[11px] text-slate-400 block">{user?.email}</span>
         </div>
 

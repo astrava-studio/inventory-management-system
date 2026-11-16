@@ -6,6 +6,9 @@ export interface AuthUser {
   email: string;
   fullName: string;
   role: UserRole;
+  tenantId: string;
+  workspaceName?: string;
+  currency?: string;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -14,6 +17,7 @@ export interface AuthenticatedRequest extends Request {
 
 export interface InventoryLevelDTO {
   id: string;
+  tenantId: string;
   productId: string;
   locationId: string;
   onHand: number;

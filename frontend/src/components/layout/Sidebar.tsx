@@ -9,6 +9,7 @@ import {
   ArrowLeftRight,
   History,
   Boxes,
+  Building2,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
     { id: 'sales-orders', label: 'Sales Orders', icon: FileUp },
     { id: 'transfers', label: 'Stock Transfers', icon: ArrowLeftRight },
     { id: 'ledger', label: 'Stock Ledger', icon: History },
+    { id: 'workspace', label: 'Workspace & Team', icon: Building2 },
   ];
 
   return (
@@ -36,7 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
         </div>
         <div>
           <span className="font-bold text-white tracking-wide text-sm block">ASTRAVA WMS</span>
-          <span className="text-[10px] text-blue-400 font-medium tracking-wider uppercase">Multi-Location Core</span>
+          <span className="text-[10px] text-blue-400 font-medium tracking-wider uppercase">Multi-Tenant Core</span>
         </div>
       </div>
 
@@ -79,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
           <span>Zero-Race Engine</span>
         </div>
         <p className="text-slate-400 text-[10px] leading-relaxed">
-          Row-level locks & check constraints actively prevent negative balances.
+          Row-level locks & check constraints actively isolate and protect multi-tenant stock.
         </p>
       </div>
     </aside>

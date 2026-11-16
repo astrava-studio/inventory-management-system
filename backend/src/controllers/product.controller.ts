@@ -22,9 +22,14 @@ export const getProducts = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const { search, category, isActive } = req.query;
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      tenantId,
+    };
 
     if (isActive !== undefined) {
       where.isActive = isActive === 'true';
@@ -47,6 +52,7 @@ export const getProducts = async (
       orderBy: { name: 'asc' },
       include: {
         inventoryLevels: {
+          where: { tenantId },
           include: { location: true },
         },
       },
@@ -88,9 +94,6 @@ export const getProducts = async (
       };
     });
 
-    // Edge cache & Stale-While-Revalidate for near-instant refreshes
-    res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=30');
-
     res.json({ products: enriched });
   } catch (error) {
     next(error);
@@ -103,11 +106,15 @@ export const getProductById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
-    const product = await prisma.product.findUnique({
-      where: { id },
+
+    const product = await prisma.product.findFirst({
+      where: { id, tenantId },
       include: {
         inventoryLevels: {
+          where: { tenantId },
           include: { location: true },
         },
       },
@@ -134,9 +141,18 @@ export const getProductById = async (
 
     res.json({
       product: {
-        ...product,
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        description: product.description,
+        category: product.category,
+        unitOfMeasure: product.unitOfMeasure,
         costPrice: Number(product.costPrice),
         sellingPrice: Number(product.sellingPrice),
+        reorderPoint: product.reorderPoint,
+        isActive: product.isActive,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
         totalOnHand,
         totalReserved,
         totalAvailable: totalOnHand - totalReserved,
@@ -154,18 +170,29 @@ export const createProduct = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const validated = productSchema.parse(req.body);
 
     const existing = await prisma.product.findUnique({
-      where: { sku: validated.sku },
+      where: {
+        tenantId_sku: {
+          tenantId,
+          sku: validated.sku,
+        },
+      },
     });
 
     if (existing) {
-      throw new AppError(`A product with SKU '${validated.sku}' already exists.`, 409);
+      throw new AppError(`A product with SKU '${validated.sku}' already exists in your workspace.`, 409);
     }
 
     const product = await prisma.product.create({
-      data: validated,
+      data: {
+        ...validated,
+        tenantId,
+      },
     });
 
     res.status(201).json({
@@ -187,20 +214,30 @@ export const updateProduct = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
     const validated = productSchema.partial().parse(req.body);
 
-    const existing = await prisma.product.findUnique({ where: { id } });
+    const existing = await prisma.product.findFirst({
+      where: { id, tenantId },
+    });
+
     if (!existing) {
-      throw new AppError('Product not found', 404);
+      throw new AppError('Product not found in this workspace', 404);
     }
 
     if (validated.sku && validated.sku !== existing.sku) {
       const duplicateSku = await prisma.product.findUnique({
-        where: { sku: validated.sku },
+        where: {
+          tenantId_sku: {
+            tenantId,
+            sku: validated.sku,
+          },
+        },
       });
       if (duplicateSku) {
-        throw new AppError(`A product with SKU '${validated.sku}' already exists.`, 409);
+        throw new AppError(`A product with SKU '${validated.sku}' already exists in your workspace.`, 409);
       }
     }
 
@@ -228,24 +265,54 @@ export const deleteProduct = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    // Check if inventory has onHand > 0
-    const activeInventory = await prisma.inventoryLevel.findFirst({
-      where: { productId: id, onHand: { gt: 0 } },
+    const existing = await prisma.product.findFirst({
+      where: { id, tenantId },
     });
 
-    if (activeInventory) {
-      throw new AppError('Cannot delete product with existing on-hand stock. Deactivate it instead.', 400);
+    if (!existing) {
+      throw new AppError('Product not found', 404);
     }
 
-    // Soft delete / deactivate
+    // Soft delete / archive product
     await prisma.product.update({
       where: { id },
       data: { isActive: false },
     });
 
-    res.json({ message: 'Product deactivated successfully' });
+    res.json({ message: 'Product archived successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restoreProduct = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+    const id = req.params.id as string;
+
+    const existing = await prisma.product.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!existing) {
+      throw new AppError('Product not found', 404);
+    }
+
+    await prisma.product.update({
+      where: { id },
+      data: { isActive: true },
+    });
+
+    res.json({ message: 'Product restored successfully' });
   } catch (error) {
     next(error);
   }
@@ -260,6 +327,9 @@ export const importProductsCsv = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const csvContent: string = req.body.csvData || req.body;
     if (!csvContent || typeof csvContent !== 'string') {
       throw new AppError('CSV data string is required in request body (csvData).', 400);
@@ -290,6 +360,7 @@ export const importProductsCsv = async (
 
     const errors: Array<{ row: number; error: string }> = [];
     const validRows: Array<{
+      tenantId: string;
       sku: string;
       name: string;
       category: string;
@@ -331,6 +402,7 @@ export const importProductsCsv = async (
       }
 
       validRows.push({
+        tenantId,
         sku,
         name,
         category,
@@ -347,12 +419,17 @@ export const importProductsCsv = async (
       return;
     }
 
-    // Upsert products in transaction
+    // Upsert products in transaction strictly per tenant
     const upsertedCount = await prisma.$transaction(async (tx) => {
       let count = 0;
       for (const row of validRows) {
         await tx.product.upsert({
-          where: { sku: row.sku },
+          where: {
+            tenantId_sku: {
+              tenantId,
+              sku: row.sku,
+            },
+          },
           update: {
             name: row.name,
             category: row.category,
@@ -361,6 +438,7 @@ export const importProductsCsv = async (
             reorderPoint: row.reorderPoint,
             unitOfMeasure: row.unitOfMeasure,
             description: row.description,
+            isActive: true,
           },
           create: row,
         });
@@ -384,15 +462,20 @@ export const importProductsCsv = async (
  * CSV Export
  */
 export const exportProductsCsv = async (
-  _req: AuthenticatedRequest,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const products = await prisma.product.findMany({
-      where: { isActive: true },
+      where: { tenantId, isActive: true },
       include: {
-        inventoryLevels: true,
+        inventoryLevels: {
+          where: { tenantId },
+        },
       },
       orderBy: { sku: 'asc' },
     });

@@ -21,9 +21,15 @@ export const getInventoryMatrix = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const { locationId, category, lowStockOnly, search } = req.query;
 
-    const whereProduct: Record<string, unknown> = { isActive: true };
+    const whereProduct: Record<string, unknown> = {
+      tenantId,
+      isActive: true,
+    };
 
     if (category && typeof category === 'string' && category !== 'ALL') {
       whereProduct.category = category;
@@ -36,7 +42,9 @@ export const getInventoryMatrix = async (
       ];
     }
 
-    const whereInventory: Record<string, unknown> = {};
+    const whereInventory: Record<string, unknown> = {
+      tenantId,
+    };
     if (locationId && typeof locationId === 'string' && locationId !== 'ALL') {
       whereInventory.locationId = locationId;
     }
@@ -115,6 +123,7 @@ export const recordStockAdjustment = async (
 
     const result = await InventoryService.recordAdjustment({
       ...validated,
+      tenantId: req.user.tenantId,
       performedById: req.user.id,
     });
 
@@ -122,6 +131,74 @@ export const recordStockAdjustment = async (
       message: 'Stock adjustment recorded successfully',
       ...result,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const exportInventoryCsv = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
+    const inventoryLevels = await prisma.inventoryLevel.findMany({
+      where: { tenantId },
+      include: {
+        product: true,
+        location: true,
+      },
+      orderBy: [
+        { product: { sku: 'asc' } },
+        { location: { code: 'asc' } },
+      ],
+    });
+
+    const headers = [
+      'SKU',
+      'Product Name',
+      'Category',
+      'Warehouse Code',
+      'Warehouse Name',
+      'On Hand',
+      'Reserved',
+      'Available',
+      'Unit Cost',
+      'Valuation',
+      'Reorder Point',
+      'Status',
+    ];
+
+    const rows = inventoryLevels.map((lvl) => {
+      const available = lvl.onHand - lvl.reserved;
+      const unitCost = Number(lvl.product.costPrice);
+      const valuation = lvl.onHand * unitCost;
+      const status = available <= lvl.product.reorderPoint ? 'LOW STOCK' : 'HEALTHY';
+
+      return [
+        `"${lvl.product.sku.replace(/"/g, '""')}"`,
+        `"${lvl.product.name.replace(/"/g, '""')}"`,
+        `"${lvl.product.category.replace(/"/g, '""')}"`,
+        `"${lvl.location.code.replace(/"/g, '""')}"`,
+        `"${lvl.location.name.replace(/"/g, '""')}"`,
+        lvl.onHand,
+        lvl.reserved,
+        available,
+        unitCost.toFixed(2),
+        valuation.toFixed(2),
+        lvl.product.reorderPoint,
+        status,
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="inventory-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.status(200).send(csvContent);
   } catch (error) {
     next(error);
   }

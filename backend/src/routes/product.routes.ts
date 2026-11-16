@@ -5,6 +5,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  restoreProduct,
   importProductsCsv,
   exportProductsCsv,
 } from '../controllers/product.controller.js';
@@ -21,6 +22,7 @@ router.get('/:id', getProductById);
 router.post('/', requireRole(UserRole.ADMIN, UserRole.MANAGER), createProduct);
 router.put('/:id', requireRole(UserRole.ADMIN, UserRole.MANAGER), updateProduct);
 router.delete('/:id', requireRole(UserRole.ADMIN), deleteProduct);
+router.patch('/:id/restore', requireRole(UserRole.ADMIN), restoreProduct);
 router.post('/import-csv', requireRole(UserRole.ADMIN, UserRole.MANAGER), importProductsCsv);
 
 export default router;

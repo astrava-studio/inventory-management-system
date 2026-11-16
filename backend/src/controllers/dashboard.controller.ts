@@ -1,34 +1,38 @@
 import { Response, NextFunction } from 'express';
 import prisma from '../lib/prisma.js';
 import { AuthenticatedRequest } from '../types/index.js';
+import { AppError } from '../middleware/error.middleware.js';
 
 export const getDashboardKpis = async (
-  _req: AuthenticatedRequest,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    // 1. Total Active SKUs
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
+    // 1. Total Active SKUs for this tenant
     const totalActiveSkus = await prisma.product.count({
-      where: { isActive: true },
+      where: { tenantId, isActive: true },
     });
 
-    // 2. Open Purchase Orders (DRAFT or ORDERED)
+    // 2. Open Purchase Orders (DRAFT or ORDERED) for this tenant
     const openPosCount = await prisma.purchaseOrder.count({
-      where: { status: { in: ['DRAFT', 'ORDERED'] } },
+      where: { tenantId, status: { in: ['DRAFT', 'ORDERED'] } },
     });
 
-    // 3. Pending Sales Orders (DRAFT or CONFIRMED)
+    // 3. Pending Sales Orders (DRAFT or CONFIRMED) for this tenant
     const pendingSosCount = await prisma.salesOrder.count({
-      where: { status: { in: ['DRAFT', 'CONFIRMED'] } },
+      where: { tenantId, status: { in: ['DRAFT', 'CONFIRMED'] } },
     });
 
-    // 4. Inventory valuation & Low-Stock count
-    // Fetch all active products with their inventory levels
+    // 4. Inventory valuation & Low-Stock count for this tenant
     const productsWithInventory = await prisma.product.findMany({
-      where: { isActive: true },
+      where: { tenantId, isActive: true },
       include: {
         inventoryLevels: {
+          where: { tenantId },
           include: { location: true },
         },
       },
@@ -92,29 +96,33 @@ export const getDashboardKpis = async (
       }
     }
 
-    // 5. Recent 10 Stock Movements
+    // 5. Recent 10 Stock Movements for this tenant
     const recentMovements = await prisma.stockMovement.findMany({
+      where: { tenantId },
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
         product: { select: { sku: true, name: true, unitOfMeasure: true } },
         location: { select: { code: true, name: true } },
-        performedBy: { select: { fullName: true, email: true } },
+        performedBy: { select: { fullName: true, role: true } },
       },
     });
 
-    // Edge cache & Stale-While-Revalidate for near-instant refreshes
-    res.setHeader('Cache-Control', 'public, max-age=5, stale-while-revalidate=30');
+    // 6. Active locations count for this tenant
+    const activeLocationsCount = await prisma.location.count({
+      where: { tenantId, isActive: true },
+    });
 
     res.json({
       kpis: {
-        totalValuation: Math.round(totalValuation * 100) / 100,
         totalActiveSkus,
-        lowStockSkuCount: lowStockCount,
+        totalValuation: Math.round(totalValuation * 100) / 100,
+        lowStockCount,
         openPosCount,
         pendingSosCount,
+        activeLocationsCount,
       },
-      lowStockAlerts: lowStockItems,
+      lowStockItems,
       recentMovements,
     });
   } catch (error) {

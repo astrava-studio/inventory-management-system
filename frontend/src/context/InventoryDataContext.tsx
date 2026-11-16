@@ -123,6 +123,42 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
   // Guards against concurrent duplicate fetches
   const inFlightRef = useRef<Record<string, Promise<unknown> | undefined>>({});
   const prefetchStartedRef = useRef<boolean>(false);
+  const previousTenantIdRef = useRef<string | undefined>(user?.tenantId);
+
+  // Reset state immediately whenever the user logs out or switches workspace
+  useEffect(() => {
+    if (!user) {
+      setDashboard(null);
+      setProducts([]);
+      setLocations([]);
+      setInventory([]);
+      setPurchaseOrders([]);
+      setSalesOrders([]);
+      setTransfers([]);
+      setLedgerMovements([]);
+      setLedgerTotal(0);
+      setIsPrefetchDone(false);
+      sessionStorage.clear();
+      prefetchStartedRef.current = false;
+      return;
+    }
+
+    if (previousTenantIdRef.current && previousTenantIdRef.current !== user.tenantId) {
+      setDashboard(null);
+      setProducts([]);
+      setLocations([]);
+      setInventory([]);
+      setPurchaseOrders([]);
+      setSalesOrders([]);
+      setTransfers([]);
+      setLedgerMovements([]);
+      setLedgerTotal(0);
+      setIsPrefetchDone(false);
+      sessionStorage.clear();
+      prefetchStartedRef.current = false;
+    }
+    previousTenantIdRef.current = user.tenantId;
+  }, [user]);
 
   // 1. Fetch Dashboard (High Priority on Login)
   const fetchDashboard = useCallback(async (force = false): Promise<DashboardData | null> => {

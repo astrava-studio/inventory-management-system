@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
+  Download,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -139,6 +140,22 @@ export const LedgerPage: React.FC = () => {
     setEndDate('');
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const csv = await api.get<string>('/ledger/export-csv');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `stock-ledger-${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      alert('Failed to export ledger CSV: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
+
   const getTypeBadge = (type: MovementType) => {
     switch (type) {
       case 'PURCHASE_RECEIPT':
@@ -191,6 +208,9 @@ export const LedgerPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={handleExportCsv} icon={<Download className="w-3.5 h-3.5" />}>
+            Export CSV
+          </Button>
           <Button variant="outline" size="sm" onClick={() => fetchLedger(pagination.page)} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh

@@ -6,6 +6,24 @@ export interface User {
   fullName: string;
   role: UserRole;
   isActive?: boolean;
+  tenantId: string;
+  workspaceName?: string;
+  currency?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    users: number;
+    locations: number;
+    products: number;
+  };
 }
 
 export interface Location {
@@ -14,6 +32,9 @@ export interface Location {
   name: string;
   address?: string | null;
   isActive: boolean;
+  _count?: {
+    inventoryLevels: number;
+  };
 }
 
 export interface ProductLocationStock {
@@ -177,6 +198,7 @@ export interface DashboardData {
     lowStockSkuCount: number;
     openPosCount: number;
     pendingSosCount: number;
+    activeLocationsCount?: number;
   };
   lowStockAlerts: Array<{
     productId: string;

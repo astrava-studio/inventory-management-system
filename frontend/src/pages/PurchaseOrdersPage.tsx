@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { PurchaseOrder, Location, Product, POStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useInventoryData } from '../context/InventoryDataContext';
+import { formatCurrency } from '../lib/currency';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -323,7 +324,7 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
                       {po.items.length} lines ({po.totalUnits} units)
                     </td>
                     <td className="py-3 px-4 text-right tabular-nums font-semibold text-white">
-                      ${po.totalAmount?.toFixed(2)}
+                      {formatCurrency(po.totalAmount, user?.currency)}
                     </td>
                     <td className="py-3 px-4 text-right space-x-1">
                       {po.status === 'DRAFT' && isManagerOrAdmin && (
@@ -519,7 +520,7 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
             <div className="flex justify-between items-center text-xs font-semibold text-slate-200 pt-2 border-t border-slate-800/80">
               <span>Total Estimated Cost:</span>
               <span className="text-sm font-bold text-blue-400 tabular-nums">
-                ${totalCalculatedCost.toFixed(2)}
+                {formatCurrency(totalCalculatedCost, user?.currency)}
               </span>
             </div>
           </div>

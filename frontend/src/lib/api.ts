@@ -1,4 +1,7 @@
-const RAW_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '');
+const DEFAULT_PROD_API = 'https://inventory-management-system-3i9g.onrender.com';
+const RAW_BASE =
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ||
+  (import.meta.env.PROD ? DEFAULT_PROD_API : '');
 const API_BASE = RAW_BASE ? (RAW_BASE.endsWith('/api') ? RAW_BASE : `${RAW_BASE}/api`) : '/api';
 
 export class ApiError extends Error {
@@ -29,16 +32,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers,
   });
 
-  if (res.status === 401 && !endpoint.includes('/auth/login')) {
+  if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
     localStorage.removeItem('inventory_token');
     localStorage.removeItem('inventory_user');
+    sessionStorage.clear();
     window.location.href = '/login';
     throw new ApiError('Session expired. Please log in again.', 401);
   }
 
   // Handle CSV responses
   const contentType = res.headers.get('content-type');
-  if (contentType && contentType.includes('text/csv')) {
+  if (contentType && (contentType.includes('text/csv') || endpoint.includes('export-csv'))) {
     return (await res.text()) as unknown as T;
   }
 
@@ -48,7 +52,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     data = rawText ? JSON.parse(rawText) : {};
   } catch {
     throw new ApiError(
-      `Backend API unreachable (${res.status} ${res.statusText || 'Not Found'}). The backend server is not running on this domain.`,
+      `Backend service returned unexpected response (${res.status} ${res.statusText || 'Error'}). Ensure backend is live.`,
       res.status
     );
   }
@@ -67,8 +71,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint, { method: 'GET' }),
   post: <T>(endpoint: string, body?: unknown) =>
-    request<T>(endpoint, { method: 'POST', body: JSON.stringify(body) }),
+    request<T>(endpoint, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(endpoint: string, body?: unknown) =>
-    request<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
+    request<T>(endpoint, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
+  patch: <T>(endpoint: string, body?: unknown) =>
+    request<T>(endpoint, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' }),
 };

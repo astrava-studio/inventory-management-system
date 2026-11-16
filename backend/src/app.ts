@@ -9,6 +9,8 @@ import purchaseOrderRoutes from './routes/purchase-order.routes.js';
 import salesOrderRoutes from './routes/sales-order.routes.js';
 import transferRoutes from './routes/transfer.routes.js';
 import ledgerRoutes from './routes/ledger.routes.js';
+import workspaceRoutes from './routes/workspace.routes.js';
+import userRoutes from './routes/user.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 
 export const createApp = (): Express => {
@@ -39,6 +41,8 @@ export const createApp = (): Express => {
   app.use('/api/sales-orders', salesOrderRoutes);
   app.use('/api/transfers', transferRoutes);
   app.use('/api/ledger', ledgerRoutes);
+  app.use('/api/workspace', workspaceRoutes);
+  app.use('/api/users', userRoutes);
 
   // Global Error Handler
   app.use(errorHandler);

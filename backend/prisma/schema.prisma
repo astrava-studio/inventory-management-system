@@ -42,8 +42,28 @@ enum TransferStatus {
   CANCELLED
 }
 
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  currency  String   @default("INR")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users           User[]
+  locations       Location[]
+  products        Product[]
+  inventoryLevels InventoryLevel[]
+  stockMovements  StockMovement[]
+  purchaseOrders  PurchaseOrder[]
+  salesOrders     SalesOrder[]
+  stockTransfers  StockTransfer[]
+
+  @@map("tenants")
+}
+
 model User {
   id             String          @id @default(uuid())
+  tenantId       String          @map("tenant_id")
   email          String          @unique
   passwordHash   String          @map("password_hash")
   fullName       String          @map("full_name")
@@ -52,23 +72,27 @@ model User {
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
 
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
   purchaseOrders PurchaseOrder[]
   salesOrders    SalesOrder[]
   transfers      StockTransfer[]
 
+  @@index([tenantId])
   @@map("users")
 }
 
 model Location {
   id                  String          @id @default(uuid())
-  code                String          @unique
+  tenantId            String          @map("tenant_id")
+  code                String
   name                String
   address             String?
   isActive            Boolean         @default(true) @map("is_active")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
 
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   inventoryLevels     InventoryLevel[]
   stockMovements      StockMovement[]
   purchaseOrders      PurchaseOrder[]
@@ -76,12 +100,15 @@ model Location {
   outgoingTransfers   StockTransfer[] @relation("SourceLocation")
   incomingTransfers   StockTransfer[] @relation("DestinationLocation")
 
+  @@unique([tenantId, code])
+  @@index([tenantId])
   @@map("locations")
 }
 
 model Product {
   id                 String              @id @default(uuid())
-  sku                String              @unique
+  tenantId           String              @map("tenant_id")
+  sku                String
   name               String
   description        String?
   category           String
@@ -93,51 +120,60 @@ model Product {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
 
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   inventoryLevels    InventoryLevel[]
   stockMovements     StockMovement[]
   purchaseOrderItems PurchaseOrderItem[]
   salesOrderItems    SalesOrderItem[]
   transferItems      StockTransferItem[]
 
+  @@unique([tenantId, sku])
+  @@index([tenantId])
   @@index([category])
   @@map("products")
 }
 
 model InventoryLevel {
   id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
   productId  String   @map("product_id")
   locationId String   @map("location_id")
   onHand     Int      @default(0) @map("on_hand")
   reserved   Int      @default(0) @map("reserved")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   location   Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
   @@unique([productId, locationId])
+  @@index([tenantId])
   @@index([locationId])
   @@map("inventory_levels")
 }
 
 model StockMovement {
   id            String       @id @default(uuid())
+  tenantId      String       @map("tenant_id")
   productId     String       @map("product_id")
   locationId    String       @map("location_id")
   type          MovementType
   quantityDelta Int          @map("quantity_delta")
   beforeOnHand  Int          @map("before_on_hand")
   afterOnHand   Int          @map("after_on_hand")
-  referenceType String?      @map("reference_type") // e.g., "PO", "SO", "TRANSFER", "MANUAL"
+  referenceType String?      @map("reference_type")
   referenceId   String?      @map("reference_id")
-  reasonCode    String?      @map("reason_code")    // e.g., "DAMAGED", "EXPIRED", "AUDIT_COUNT"
+  reasonCode    String?      @map("reason_code")
   notes         String?
   performedById String       @map("performed_by_id")
   createdAt     DateTime     @default(now()) @map("created_at")
 
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product       Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
   location      Location     @relation(fields: [locationId], references: [id], onDelete: Restrict)
   performedBy   User         @relation(fields: [performedById], references: [id], onDelete: Restrict)
 
+  @@index([tenantId])
   @@index([productId, locationId, createdAt(sort: Desc)])
   @@index([referenceType, referenceId])
   @@map("stock_movements")
@@ -145,7 +181,8 @@ model StockMovement {
 
 model PurchaseOrder {
   id           String              @id @default(uuid())
-  poNumber     String              @unique @map("po_number")
+  tenantId     String              @map("tenant_id")
+  poNumber     String              @map("po_number")
   supplierName String              @map("supplier_name")
   locationId   String              @map("location_id")
   status       POStatus            @default(DRAFT)
@@ -156,10 +193,13 @@ model PurchaseOrder {
   createdAt    DateTime            @default(now()) @map("created_at")
   updatedAt    DateTime            @updatedAt @map("updated_at")
 
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   location     Location            @relation(fields: [locationId], references: [id], onDelete: Restrict)
   createdBy    User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
   items        PurchaseOrderItem[]
 
+  @@unique([tenantId, poNumber])
+  @@index([tenantId])
   @@index([status])
   @@map("purchase_orders")
 }
@@ -180,7 +220,8 @@ model PurchaseOrderItem {
 
 model SalesOrder {
   id           String           @id @default(uuid())
-  soNumber     String           @unique @map("so_number")
+  tenantId     String           @map("tenant_id")
+  soNumber     String           @map("so_number")
   customerName String           @map("customer_name")
   locationId   String           @map("location_id")
   status       SOStatus         @default(DRAFT)
@@ -191,10 +232,13 @@ model SalesOrder {
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   location     Location         @relation(fields: [locationId], references: [id], onDelete: Restrict)
   createdBy    User             @relation(fields: [createdById], references: [id], onDelete: Restrict)
   items        SalesOrderItem[]
 
+  @@unique([tenantId, soNumber])
+  @@index([tenantId])
   @@index([status])
   @@map("sales_orders")
 }
@@ -215,7 +259,8 @@ model SalesOrderItem {
 
 model StockTransfer {
   id                    String              @id @default(uuid())
-  transferNumber        String              @unique @map("transfer_number")
+  tenantId              String              @map("tenant_id")
+  transferNumber        String              @map("transfer_number")
   sourceLocationId      String              @map("source_location_id")
   destinationLocationId String              @map("destination_location_id")
   status                TransferStatus      @default(PENDING)
@@ -224,11 +269,14 @@ model StockTransfer {
   createdAt             DateTime            @default(now()) @map("created_at")
   completedAt           DateTime?           @map("completed_at")
 
+  tenant                Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   sourceLocation        Location            @relation("SourceLocation", fields: [sourceLocationId], references: [id], onDelete: Restrict)
   destinationLocation   Location            @relation("DestinationLocation", fields: [destinationLocationId], references: [id], onDelete: Restrict)
   createdBy             User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
   items                 StockTransferItem[]
 
+  @@unique([tenantId, transferNumber])
+  @@index([tenantId])
   @@index([status])
   @@map("stock_transfers")
 }

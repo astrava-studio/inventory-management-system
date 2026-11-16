@@ -7,9 +7,24 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Badge } from '../components/ui/Badge';
-import { SlidersHorizontal, AlertTriangle, Layers, ArrowUpDown } from 'lucide-react';
+import {
+  SlidersHorizontal,
+  AlertTriangle,
+  Layers,
+  ArrowUpDown,
+  Download,
+  Building2,
+  Plus,
+  Archive,
+  RotateCcw,
+  ShoppingCart,
+} from 'lucide-react';
 
-export const InventoryPage: React.FC = () => {
+interface InventoryPageProps {
+  onNavigateToTab?: (tab: string, initialSku?: string) => void;
+}
+
+export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToTab }) => {
   const { user } = useAuth();
   const {
     inventory: storeInventory,
@@ -17,6 +32,7 @@ export const InventoryPage: React.FC = () => {
     invalidate,
   } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const isAdmin = user?.role === 'ADMIN';
 
   const [locations, setLocations] = useState<Location[]>(storeLocations);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
@@ -38,7 +54,7 @@ export const InventoryPage: React.FC = () => {
     }
   }, [storeInventory, selectedLocationId, lowStockOnly]);
 
-  // Adjustment Modal
+  // Adjustment Modal state
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [adjustProductId, setAdjustProductId] = useState('');
   const [adjustLocationId, setAdjustLocationId] = useState('');
@@ -49,6 +65,12 @@ export const InventoryPage: React.FC = () => {
   const [adjustNotes, setAdjustNotes] = useState('');
   const [adjustError, setAdjustError] = useState<string | null>(null);
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
+
+  // Warehouse Management Modal state
+  const [isLocationsModalOpen, setIsLocationsModalOpen] = useState(false);
+  const [locationForm, setLocationForm] = useState({ code: '', name: '', address: '' });
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
 
   const fetchLocations = async () => {
     try {
@@ -101,6 +123,11 @@ export const InventoryPage: React.FC = () => {
 
   const handleAdjustSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (adjustDelta === 0) {
+      setAdjustError('Quantity delta cannot be zero');
+      return;
+    }
+
     setIsSubmittingAdjustment(true);
     setAdjustError(null);
 
@@ -112,6 +139,7 @@ export const InventoryPage: React.FC = () => {
         reasonCode: adjustReason,
         notes: adjustNotes,
       });
+
       setIsAdjustModalOpen(false);
       await invalidate('inventory');
       fetchInventory();
@@ -122,7 +150,67 @@ export const InventoryPage: React.FC = () => {
     }
   };
 
-  // Find currently selected item for live preview in adjustment modal
+  const handleExportCsv = async () => {
+    try {
+      const csv = await api.get<string>('/inventory/export-csv');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `inventory-levels-${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      alert('Failed to export inventory CSV: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    }
+  };
+
+  const handleCreateLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingLocation(true);
+    setLocationError(null);
+
+    try {
+      await api.post('/locations', {
+        code: locationForm.code.toUpperCase().trim(),
+        name: locationForm.name.trim(),
+        address: locationForm.address.trim() || undefined,
+      });
+      setLocationForm({ code: '', name: '', address: '' });
+      await fetchLocations();
+      await invalidate('all');
+    } catch (err: unknown) {
+      setLocationError(err instanceof Error ? err.message : 'Failed to create warehouse');
+    } finally {
+      setIsSavingLocation(false);
+    }
+  };
+
+  const handleArchiveLocation = async (loc: Location) => {
+    if (!window.confirm(`Are you sure you want to deactivate warehouse "${loc.name}" (${loc.code})? It must have zero active stock.`)) {
+      return;
+    }
+    try {
+      await api.delete(`/locations/${loc.id}`);
+      await fetchLocations();
+      await invalidate('all');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to archive location');
+    }
+  };
+
+  const handleRestoreLocation = async (loc: Location) => {
+    try {
+      await api.patch(`/locations/${loc.id}/restore`);
+      await fetchLocations();
+      await invalidate('all');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to restore location');
+    }
+  };
+
+  // Derive current stock details for live invariant verification in adjustment modal
   const selectedProductRow = inventory.find((i) => i.product.id === adjustProductId);
   const selectedLevel = selectedProductRow?.levels.find((l) => l.locationId === adjustLocationId);
   const currentOnHand = selectedLevel?.onHand ?? 0;
@@ -136,22 +224,48 @@ export const InventoryPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Multi-Location Stock Levels</h1>
+          <h1 className="text-xl font-bold text-white tracking-tight">Multi-Location Inventory</h1>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time On-Hand, Reserved, and Available balances with strict non-negative invariants.
+            Real-time stock matrix with pessimistic row locking and atomic reservation tracking.
           </p>
         </div>
 
-        {isManagerOrAdmin && (
+        <div className="flex items-center gap-2">
           <Button
-            variant="primary"
+            variant="outline"
             size="sm"
-            onClick={() => openAdjustModal(inventory[0]?.product.id || '')}
-            icon={<SlidersHorizontal className="h-3.5 w-3.5" />}
+            onClick={handleExportCsv}
+            icon={<Download className="h-3.5 w-3.5" />}
           >
-            Adjust Stock
+            Export CSV
           </Button>
-        )}
+
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLocationError(null);
+                setIsLocationsModalOpen(true);
+              }}
+              icon={<Building2 className="h-3.5 w-3.5" />}
+            >
+              Warehouses
+            </Button>
+          )}
+
+          {isManagerOrAdmin && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => openAdjustModal(inventory[0]?.product.id || '')}
+              disabled={inventory.length === 0}
+              icon={<SlidersHorizontal className="h-3.5 w-3.5" />}
+            >
+              Adjust Stock
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Location Filter Tabs & Toggle */}
@@ -219,7 +333,7 @@ export const InventoryPage: React.FC = () => {
                   <th className="py-3 px-4 font-semibold text-right">Available</th>
                   <th className="py-3 px-4 font-semibold text-right">Reorder Pt</th>
                   <th className="py-3 px-4 font-semibold text-center">Buffer Status</th>
-                  {isManagerOrAdmin && <th className="py-3 px-4 font-semibold text-right">Action</th>}
+                  {isManagerOrAdmin && <th className="py-3 px-4 font-semibold text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
@@ -275,14 +389,27 @@ export const InventoryPage: React.FC = () => {
                         </td>
                         {isManagerOrAdmin && (
                           <td className="py-3 px-4 text-right">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => openAdjustModal(row.product.id, lvl.locationId)}
-                              className="text-[11px] py-1 px-2.5"
-                            >
-                              Adjust
-                            </Button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isLow && onNavigateToTab && (
+                                <button
+                                  type="button"
+                                  onClick={() => onNavigateToTab('purchase-orders', row.product.sku)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[11px] font-medium transition-colors"
+                                  title="Create Restock Purchase Order"
+                                >
+                                  <ShoppingCart className="h-3 w-3" />
+                                  <span>Reorder</span>
+                                </button>
+                              )}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => openAdjustModal(row.product.id, lvl.locationId)}
+                                className="text-[11px] py-1 px-2.5"
+                              >
+                                Adjust
+                              </Button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -453,6 +580,126 @@ export const InventoryPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Warehouse Locations Management Modal */}
+      <Modal
+        isOpen={isLocationsModalOpen}
+        onClose={() => setIsLocationsModalOpen(false)}
+        title="Warehouse Facilities & Depots"
+        description="Manage your physical warehouses, distribution hubs, and storage facilities."
+        maxWidth="xl"
+      >
+        <div className="space-y-5">
+          {locationError && (
+            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+              {locationError}
+            </div>
+          )}
+
+          {/* Create new location */}
+          <form onSubmit={handleCreateLocation} className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-3">
+            <span className="text-xs font-semibold text-white block">Add New Facility</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input
+                type="text"
+                required
+                value={locationForm.code}
+                onChange={(e) => setLocationForm({ ...locationForm, code: e.target.value })}
+                placeholder="Code (e.g. WH-NORTH)"
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 uppercase placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
+              <input
+                type="text"
+                required
+                value={locationForm.name}
+                onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
+                placeholder="Name (e.g. Northern Depot)"
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
+              <input
+                type="text"
+                value={locationForm.address}
+                onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
+                placeholder="Address / City (optional)"
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                isLoading={isSavingLocation}
+                icon={<Plus className="h-3.5 w-3.5" />}
+              >
+                Create Facility
+              </Button>
+            </div>
+          </form>
+
+          {/* List of current facilities */}
+          <div className="space-y-2">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
+              Active & Configured Facilities ({locations.length})
+            </span>
+            <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden">
+              {locations.map((loc) => (
+                <div key={loc.id} className="p-3 bg-slate-900/40 flex items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white tabular-nums">{loc.code}</span>
+                      <span className="text-slate-300 font-medium">{loc.name}</span>
+                      {!loc.isActive && (
+                        <Badge variant="default" size="sm">
+                          Deactivated
+                        </Badge>
+                      )}
+                    </div>
+                    {loc.address && (
+                      <span className="text-[11px] text-slate-400 block mt-0.5">{loc.address}</span>
+                    )}
+                  </div>
+
+                  {isAdmin && (
+                    <div>
+                      {loc.isActive ? (
+                        <button
+                          type="button"
+                          onClick={() => handleArchiveLocation(loc)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                          title="Deactivate Warehouse"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreLocation(loc)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
+                          title="Restore Warehouse"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsLocationsModalOpen(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

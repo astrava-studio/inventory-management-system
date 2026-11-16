@@ -1,5 +1,7 @@
 import React from 'react';
 import { useInventoryData } from '../context/InventoryDataContext';
+import { useAuth } from '../context/AuthContext';
+import { formatCurrency } from '../lib/currency';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -21,6 +23,7 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab }) => {
+  const { user } = useAuth();
   const {
     dashboard: data,
     isDashboardLoading: isLoading,
@@ -85,7 +88,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
             <DollarSign className="h-4 w-4 text-blue-400" />
           </div>
           <div className="text-xl font-bold text-white mt-2 tabular-nums">
-            ${data?.kpis.totalValuation.toLocaleString('en-US', { minimumFractionDigits: 2 }) ?? '0.00'}
+            {formatCurrency(data?.kpis.totalValuation, user?.currency)}
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">
             Across active facilities

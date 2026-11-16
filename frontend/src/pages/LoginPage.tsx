@@ -2,16 +2,27 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { User } from '../types';
-import { Boxes, ShieldCheck, UserCheck, User as UserIcon, ArrowRight } from 'lucide-react';
+import { Boxes, ShieldCheck, UserCheck, ArrowRight, Building2, Sparkles } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
+  const [mode, setMode] = useState<'signin' | 'register'>('signin');
+
+  // Sign in fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Register fields
+  const [fullName, setFullName] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [currency, setCurrency] = useState('INR');
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
@@ -29,7 +40,29 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const data = await api.post<{ token: string; user: User }>('/auth/register', {
+        fullName,
+        email: registerEmail,
+        password: registerPassword,
+        workspaceName,
+        currency,
+      });
+      login(data.token, data.user);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Registration failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleQuickLogin = (demoEmail: string) => {
+    setMode('signin');
     setEmail(demoEmail);
     setPassword('Password123!');
   };
@@ -44,60 +77,180 @@ export const LoginPage: React.FC = () => {
           </div>
           <h1 className="text-xl font-bold text-white tracking-wide">ASTRAVA Inventory System</h1>
           <p className="text-xs text-slate-400">
-            Multi-Location Warehouse Inventory & Audit Ledger
+            Multi-Tenant Warehouse Inventory & Audit Ledger SaaS
           </p>
         </div>
 
-        {/* Login Card */}
+        {/* Tab Toggle */}
+        <div className="flex bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('signin');
+              setError(null);
+            }}
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+              mode === 'signin'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('register');
+              setError(null);
+            }}
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+              mode === 'register'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Create Workspace
+          </button>
+        </div>
+
+        {/* Form Card */}
         <div className="bg-[#111827] border border-slate-800 rounded-xl p-6 shadow-xl space-y-5">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
-                {error}
+          {error && (
+            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+              {error}
+            </div>
+          )}
+
+          {mode === 'signin' ? (
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Work Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@inventory.local"
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
               </div>
-            )}
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Work Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@inventory.local"
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-2 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs py-2.5 px-4 rounded-lg transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#111827] disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <span>Sign In</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Company / Workspace Name</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={workspaceName}
+                    onChange={(e) => setWorkspaceName(e.target.value)}
+                    placeholder="e.g. Acme Logistics Global"
+                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                  <Building2 className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                </div>
+              </div>
 
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full mt-2 inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs py-2.5 px-4 rounded-lg transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#111827] disabled:opacity-50"
-            >
-              {isLoading ? (
-                <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>Sign In</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </>
-              )}
-            </button>
-          </form>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Your Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="John Doe"
+                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Base Currency</label>
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="INR">INR (₹ Indian Rupee)</option>
+                    <option value="USD">USD ($ US Dollar)</option>
+                    <option value="EUR">EUR (€ Euro)</option>
+                    <option value="GBP">GBP (£ British Pound)</option>
+                    <option value="CAD">CAD (CA$ Canadian Dollar)</option>
+                    <option value="AUD">AUD (AU$ Australian Dollar)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Work Email</label>
+                <input
+                  type="email"
+                  required
+                  value={registerEmail}
+                  onChange={(e) => setRegisterEmail(e.target.value)}
+                  placeholder="admin@mycompany.com"
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={registerPassword}
+                  onChange={(e) => setRegisterPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-2 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium text-xs py-2.5 px-4 rounded-lg transition-all focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-blue-200" />
+                    <span>Create Workspace & Start Free</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
           {/* Quick Demo Logins */}
           <div className="pt-4 border-t border-slate-800 space-y-2">
@@ -111,8 +264,18 @@ export const LoginPage: React.FC = () => {
                 className="flex flex-col items-center p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500/50 hover:bg-purple-500/10 text-slate-300 transition-all text-center"
               >
                 <ShieldCheck className="h-4 w-4 text-purple-400 mb-1" />
-                <span className="text-[10px] font-semibold text-purple-300">Admin</span>
-                <span className="text-[9px] text-slate-500">Full Access</span>
+                <span className="text-[10px] font-semibold text-purple-300">Tenant A (INR)</span>
+                <span className="text-[9px] text-slate-500">Astrava Admin</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('admin@nexus.local')}
+                className="flex flex-col items-center p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-slate-300 transition-all text-center"
+              >
+                <ShieldCheck className="h-4 w-4 text-emerald-400 mb-1" />
+                <span className="text-[10px] font-semibold text-emerald-300">Tenant B (USD)</span>
+                <span className="text-[9px] text-slate-500">Nexus Admin</span>
               </button>
 
               <button
@@ -124,23 +287,13 @@ export const LoginPage: React.FC = () => {
                 <span className="text-[10px] font-semibold text-blue-300">Manager</span>
                 <span className="text-[9px] text-slate-500">Operations</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('staff@inventory.local')}
-                className="flex flex-col items-center p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/10 text-slate-300 transition-all text-center"
-              >
-                <UserIcon className="h-4 w-4 text-emerald-400 mb-1" />
-                <span className="text-[10px] font-semibold text-emerald-300">Staff</span>
-                <span className="text-[9px] text-slate-500">Warehouse</span>
-              </button>
             </div>
           </div>
         </div>
 
         {/* Security Invariant Note */}
         <p className="text-[11px] text-center text-slate-400">
-          Astrava Studio Working Standard • Strict Zero-Race Condition Stock Engine
+          Astrava Studio Working Standard • Strict Zero-Race Condition Multi-Tenant Engine
         </p>
       </div>
     </div>

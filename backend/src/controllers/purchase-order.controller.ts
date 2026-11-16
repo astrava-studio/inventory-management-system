@@ -29,9 +29,14 @@ export const getPurchaseOrders = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const { status, locationId } = req.query;
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      tenantId,
+    };
 
     if (status && typeof status === 'string' && status !== 'ALL') {
       where.status = status as POStatus;
@@ -84,9 +89,12 @@ export const getPurchaseOrderById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
-    const po = await prisma.purchaseOrder.findUnique({
-      where: { id },
+
+    const po = await prisma.purchaseOrder.findFirst({
+      where: { id, tenantId },
       include: {
         location: true,
         createdBy: { select: { id: true, fullName: true, email: true } },
@@ -126,13 +134,23 @@ export const createPurchaseOrder = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
 
     const validated = createPoSchema.parse(req.body);
 
-    const location = await prisma.location.findUnique({
-      where: { id: validated.locationId },
+    const location = await prisma.location.findFirst({
+      where: { id: validated.locationId, tenantId },
     });
-    if (!location) throw new AppError('Location not found', 404);
+    if (!location) throw new AppError('Location not found in your workspace', 404);
+
+    // Validate all products belong to tenant
+    const productIds = validated.items.map((i) => i.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, tenantId },
+    });
+    if (products.length !== productIds.length) {
+      throw new AppError('One or more selected products were not found in your workspace', 400);
+    }
 
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -140,6 +158,7 @@ export const createPurchaseOrder = async (
 
     const po = await prisma.purchaseOrder.create({
       data: {
+        tenantId,
         poNumber,
         supplierName: validated.supplierName,
         locationId: validated.locationId,
@@ -172,9 +191,11 @@ export const markPoOrdered = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, tenantId } });
     if (!po) throw new AppError('Purchase order not found', 404);
 
     if (po.status !== POStatus.DRAFT) {
@@ -203,9 +224,13 @@ export const receivePurchaseOrder = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const receivedPo = await InventoryService.receivePurchaseOrder(id, req.user.id);
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, tenantId } });
+    if (!po) throw new AppError('Purchase order not found in your workspace', 404);
+
+    const receivedPo = await InventoryService.receivePurchaseOrder(id, req.user.id, tenantId);
 
     res.json({
       message: 'Purchase order received and stock quantities added to inventory',
@@ -222,9 +247,11 @@ export const cancelPurchaseOrder = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const po = await prisma.purchaseOrder.findUnique({ where: { id } });
+    const po = await prisma.purchaseOrder.findFirst({ where: { id, tenantId } });
     if (!po) throw new AppError('Purchase order not found', 404);
 
     if (po.status === POStatus.RECEIVED) {

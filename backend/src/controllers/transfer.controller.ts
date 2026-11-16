@@ -33,9 +33,14 @@ export const getTransfers = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const { status, sourceId, destinationId } = req.query;
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      tenantId,
+    };
 
     if (status && typeof status === 'string' && status !== 'ALL') {
       where.status = status as TransferStatus;
@@ -85,9 +90,12 @@ export const getTransferById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
-    const transfer = await prisma.stockTransfer.findUnique({
-      where: { id },
+
+    const transfer = await prisma.stockTransfer.findFirst({
+      where: { id, tenantId },
       include: {
         sourceLocation: true,
         destinationLocation: true,
@@ -118,16 +126,26 @@ export const createTransfer = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
 
     const validated = createTransferSchema.parse(req.body);
 
     const [source, dest] = await Promise.all([
-      prisma.location.findUnique({ where: { id: validated.sourceLocationId } }),
-      prisma.location.findUnique({ where: { id: validated.destinationLocationId } }),
+      prisma.location.findFirst({ where: { id: validated.sourceLocationId, tenantId } }),
+      prisma.location.findFirst({ where: { id: validated.destinationLocationId, tenantId } }),
     ]);
 
-    if (!source) throw new AppError('Source location not found', 404);
-    if (!dest) throw new AppError('Destination location not found', 404);
+    if (!source) throw new AppError('Source location not found in your workspace', 404);
+    if (!dest) throw new AppError('Destination location not found in your workspace', 404);
+
+    // Validate products belong to tenant
+    const productIds = validated.items.map((i) => i.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, tenantId },
+    });
+    if (products.length !== productIds.length) {
+      throw new AppError('One or more selected products were not found in your workspace', 400);
+    }
 
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -135,6 +153,7 @@ export const createTransfer = async (
 
     const transfer = await prisma.stockTransfer.create({
       data: {
+        tenantId,
         transferNumber,
         sourceLocationId: validated.sourceLocationId,
         destinationLocationId: validated.destinationLocationId,
@@ -167,9 +186,11 @@ export const dispatchTransfer = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const transfer = await prisma.stockTransfer.findUnique({ where: { id } });
+    const transfer = await prisma.stockTransfer.findFirst({ where: { id, tenantId } });
     if (!transfer) throw new AppError('Stock transfer not found', 404);
 
     if (transfer.status !== TransferStatus.PENDING) {
@@ -199,9 +220,10 @@ export const completeTransfer = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const completed = await InventoryService.completeTransfer(id, req.user.id);
+    const completed = await InventoryService.completeTransfer(id, req.user.id, tenantId);
 
     res.json({
       message: 'Stock transfer completed and quantities updated in both locations',
@@ -218,9 +240,11 @@ export const cancelTransfer = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const transfer = await prisma.stockTransfer.findUnique({ where: { id } });
+    const transfer = await prisma.stockTransfer.findFirst({ where: { id, tenantId } });
     if (!transfer) throw new AppError('Stock transfer not found', 404);
 
     if (transfer.status === TransferStatus.COMPLETED) {

@@ -8,6 +8,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
+  updateUser: (updatedUser: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,7 +26,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     return null;
   });
-  // If token and user are already present in localStorage, unblock UI immediately (0ms latency on refresh)
   const [isLoading, setIsLoading] = useState<boolean>(() => !localStorage.getItem('inventory_token'));
 
   useEffect(() => {
@@ -33,7 +33,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedUser = localStorage.getItem('inventory_user');
 
     if (savedToken && savedUser) {
-      // Revalidate with server quietly in background (Stale-While-Revalidate)
       api.get<{ user: User }>('/auth/me')
         .then((res) => {
           setUser(res.user);
@@ -48,6 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = (newToken: string, newUser: User) => {
+    sessionStorage.clear();
     localStorage.setItem('inventory_token', newToken);
     localStorage.setItem('inventory_user', JSON.stringify(newUser));
     setToken(newToken);
@@ -57,12 +57,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     localStorage.removeItem('inventory_token');
     localStorage.removeItem('inventory_user');
+    sessionStorage.clear();
     setToken(null);
     setUser(null);
   };
 
+  const updateUser = (updatedFields: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const nextUser = { ...prev, ...updatedFields };
+      localStorage.setItem('inventory_user', JSON.stringify(nextUser));
+      return nextUser;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

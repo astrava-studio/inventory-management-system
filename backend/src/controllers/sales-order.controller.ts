@@ -33,9 +33,14 @@ export const getSalesOrders = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
+
     const { status, locationId } = req.query;
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      tenantId,
+    };
 
     if (status && typeof status === 'string' && status !== 'ALL') {
       where.status = status as SOStatus;
@@ -55,7 +60,9 @@ export const getSalesOrders = async (
           include: {
             product: {
               include: {
-                inventoryLevels: true,
+                inventoryLevels: {
+                  where: { tenantId },
+                },
               },
             },
           },
@@ -100,16 +107,23 @@ export const getSalesOrderById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
-    const so = await prisma.salesOrder.findUnique({
-      where: { id },
+
+    const so = await prisma.salesOrder.findFirst({
+      where: { id, tenantId },
       include: {
         location: true,
         createdBy: { select: { id: true, fullName: true, email: true } },
         items: {
           include: {
             product: {
-              include: { inventoryLevels: true },
+              include: {
+                inventoryLevels: {
+                  where: { tenantId },
+                },
+              },
             },
           },
         },
@@ -152,13 +166,23 @@ export const createSalesOrder = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
 
     const validated = createSoSchema.parse(req.body);
 
-    const location = await prisma.location.findUnique({
-      where: { id: validated.locationId },
+    const location = await prisma.location.findFirst({
+      where: { id: validated.locationId, tenantId },
     });
-    if (!location) throw new AppError('Location not found', 404);
+    if (!location) throw new AppError('Location not found in your workspace', 404);
+
+    // Validate products belong to tenant
+    const productIds = validated.items.map((i) => i.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, tenantId },
+    });
+    if (products.length !== productIds.length) {
+      throw new AppError('One or more selected products were not found in your workspace', 400);
+    }
 
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -166,6 +190,7 @@ export const createSalesOrder = async (
 
     const so = await prisma.salesOrder.create({
       data: {
+        tenantId,
         soNumber,
         customerName: validated.customerName,
         locationId: validated.locationId,
@@ -199,9 +224,10 @@ export const confirmSalesOrder = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const confirmed = await InventoryService.confirmSalesOrder(id, req.user.id);
+    const confirmed = await InventoryService.confirmSalesOrder(id, req.user.id, tenantId);
 
     res.json({
       message: 'Sales order confirmed and stock reserved successfully',
@@ -219,9 +245,10 @@ export const fulfillSalesOrder = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const fulfilled = await InventoryService.fulfillSalesOrder(id, req.user.id);
+    const fulfilled = await InventoryService.fulfillSalesOrder(id, req.user.id, tenantId);
 
     res.json({
       message: 'Sales order fulfilled and inventory dispatched',
@@ -239,9 +266,10 @@ export const cancelSalesOrder = async (
 ): Promise<void> => {
   try {
     if (!req.user) throw new AppError('Unauthorized', 401);
+    const tenantId = req.user.tenantId;
     const id = req.params.id as string;
 
-    const cancelled = await InventoryService.cancelSalesOrder(id, req.user.id);
+    const cancelled = await InventoryService.cancelSalesOrder(id, req.user.id, tenantId);
 
     res.json({
       message: 'Sales order cancelled',

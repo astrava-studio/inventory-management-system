@@ -3,6 +3,7 @@ import prisma from '../lib/prisma.js';
 import { AppError } from '../middleware/error.middleware.js';
 
 export interface AdjustmentInput {
+  tenantId: string;
   productId: string;
   locationId: string;
   quantityDelta: number; // positive or negative
@@ -14,12 +15,13 @@ export interface AdjustmentInput {
 export class InventoryService {
   /**
    * Helper: Locks an inventory_levels row using SELECT ... FOR UPDATE.
-   * If row doesn't exist, safely creates it first, then acquires lock.
+   * If row doesn't exist, safely creates it first with tenantId, then acquires lock.
    */
   private static async lockInventoryRow(
     tx: Prisma.TransactionClient,
     productId: string,
-    locationId: string
+    locationId: string,
+    tenantId: string
   ): Promise<{ id: string; onHand: number; reserved: number }> {
     // 1. Ensure the inventory level record exists
     await tx.inventoryLevel.upsert({
@@ -28,6 +30,7 @@ export class InventoryService {
       },
       update: {},
       create: {
+        tenantId,
         productId,
         locationId,
         onHand: 0,
@@ -35,11 +38,13 @@ export class InventoryService {
       },
     });
 
-    // 2. Lock row with SELECT ... FOR UPDATE
+    // 2. Lock row with SELECT ... FOR UPDATE strictly scoped to tenant_id
     const rows = await tx.$queryRaw<Array<{ id: string; on_hand: number; reserved: number }>>`
       SELECT id, on_hand, reserved
       FROM inventory_levels
-      WHERE product_id = ${productId} AND location_id = ${locationId}
+      WHERE product_id = ${productId}::uuid 
+        AND location_id = ${locationId}::uuid 
+        AND tenant_id = ${tenantId}::uuid
       FOR UPDATE
     `;
 
@@ -60,13 +65,14 @@ export class InventoryService {
   private static async lockInventoryRows(
     tx: Prisma.TransactionClient,
     productIds: string[],
-    locationId: string
+    locationId: string,
+    tenantId: string
   ): Promise<Map<string, { id: string; onHand: number; reserved: number }>> {
     const sortedProductIds = Array.from(new Set(productIds)).sort();
     const lockedMap = new Map<string, { id: string; onHand: number; reserved: number }>();
 
     for (const pId of sortedProductIds) {
-      const locked = await this.lockInventoryRow(tx, pId, locationId);
+      const locked = await this.lockInventoryRow(tx, pId, locationId, tenantId);
       lockedMap.set(pId, locked);
     }
 
@@ -79,11 +85,12 @@ export class InventoryService {
    */
   public static async receivePurchaseOrder(
     purchaseOrderId: string,
-    performedById: string
+    performedById: string,
+    tenantId: string
   ) {
     return prisma.$transaction(async (tx) => {
-      const po = await tx.purchaseOrder.findUnique({
-        where: { id: purchaseOrderId },
+      const po = await tx.purchaseOrder.findFirst({
+        where: { id: purchaseOrderId, tenantId },
         include: {
           items: {
             include: { product: true },
@@ -107,7 +114,7 @@ export class InventoryService {
       const sortedItems = [...po.items].sort((a, b) => a.productId.localeCompare(b.productId));
 
       for (const item of sortedItems) {
-        const locked = await this.lockInventoryRow(tx, item.productId, po.locationId);
+        const locked = await this.lockInventoryRow(tx, item.productId, po.locationId, tenantId);
         const beforeOnHand = locked.onHand;
         const afterOnHand = beforeOnHand + item.quantity;
 
@@ -120,6 +127,7 @@ export class InventoryService {
         // Insert immutable stock movement
         await tx.stockMovement.create({
           data: {
+            tenantId,
             productId: item.productId,
             locationId: po.locationId,
             type: MovementType.PURCHASE_RECEIPT,
@@ -160,11 +168,12 @@ export class InventoryService {
    */
   public static async confirmSalesOrder(
     salesOrderId: string,
-    _performedById: string
+    _performedById: string,
+    tenantId: string
   ) {
     return prisma.$transaction(async (tx) => {
-      const so = await tx.salesOrder.findUnique({
-        where: { id: salesOrderId },
+      const so = await tx.salesOrder.findFirst({
+        where: { id: salesOrderId, tenantId },
         include: {
           items: {
             include: { product: true },
@@ -184,9 +193,9 @@ export class InventoryService {
         throw new AppError('Sales order has no line items', 400);
       }
 
-      // Lock all inventory rows in ordered sequence
+      // Lock all inventory rows in ordered sequence strictly for this tenant
       const productIds = so.items.map((i) => i.productId);
-      const lockedMap = await this.lockInventoryRows(tx, productIds, so.locationId);
+      const lockedMap = await this.lockInventoryRows(tx, productIds, so.locationId, tenantId);
 
       // Verify availability for all items
       const insufficientItems: Array<{
@@ -250,11 +259,12 @@ export class InventoryService {
    */
   public static async cancelSalesOrder(
     salesOrderId: string,
-    _performedById: string
+    _performedById: string,
+    tenantId: string
   ) {
     return prisma.$transaction(async (tx) => {
-      const so = await tx.salesOrder.findUnique({
-        where: { id: salesOrderId },
+      const so = await tx.salesOrder.findFirst({
+        where: { id: salesOrderId, tenantId },
         include: { items: true },
       });
 
@@ -273,7 +283,7 @@ export class InventoryService {
       // If it was CONFIRMED, release the reserved stock
       if (so.status === 'CONFIRMED') {
         const productIds = so.items.map((i) => i.productId);
-        const lockedMap = await this.lockInventoryRows(tx, productIds, so.locationId);
+        const lockedMap = await this.lockInventoryRows(tx, productIds, so.locationId, tenantId);
 
         for (const item of so.items) {
           const current = lockedMap.get(item.productId)!;
@@ -301,11 +311,12 @@ export class InventoryService {
    */
   public static async fulfillSalesOrder(
     salesOrderId: string,
-    performedById: string
+    performedById: string,
+    tenantId: string
   ) {
     return prisma.$transaction(async (tx) => {
-      const so = await tx.salesOrder.findUnique({
-        where: { id: salesOrderId },
+      const so = await tx.salesOrder.findFirst({
+        where: { id: salesOrderId, tenantId },
         include: {
           items: {
             include: { product: true },
@@ -322,7 +333,7 @@ export class InventoryService {
       }
 
       const productIds = so.items.map((i) => i.productId);
-      const lockedMap = await this.lockInventoryRows(tx, productIds, so.locationId);
+      const lockedMap = await this.lockInventoryRows(tx, productIds, so.locationId, tenantId);
 
       for (const item of so.items) {
         const current = lockedMap.get(item.productId)!;
@@ -347,6 +358,7 @@ export class InventoryService {
 
         await tx.stockMovement.create({
           data: {
+            tenantId,
             productId: item.productId,
             locationId: so.locationId,
             type: MovementType.SALES_DISPATCH,
@@ -385,11 +397,12 @@ export class InventoryService {
    */
   public static async completeTransfer(
     transferId: string,
-    performedById: string
+    performedById: string,
+    tenantId: string
   ) {
     return prisma.$transaction(async (tx) => {
-      const transfer = await tx.stockTransfer.findUnique({
-        where: { id: transferId },
+      const transfer = await tx.stockTransfer.findFirst({
+        where: { id: transferId, tenantId },
         include: {
           items: { include: { product: true } },
           sourceLocation: true,
@@ -409,7 +422,7 @@ export class InventoryService {
       const sortedItems = [...transfer.items].sort((a, b) => a.productId.localeCompare(b.productId));
 
       for (const item of sortedItems) {
-        const sourceLocked = await this.lockInventoryRow(tx, item.productId, transfer.sourceLocationId);
+        const sourceLocked = await this.lockInventoryRow(tx, item.productId, transfer.sourceLocationId, tenantId);
         const sourceAvailable = sourceLocked.onHand - sourceLocked.reserved;
 
         if (sourceAvailable < item.quantity) {
@@ -419,7 +432,7 @@ export class InventoryService {
           );
         }
 
-        const destLocked = await this.lockInventoryRow(tx, item.productId, transfer.destinationLocationId);
+        const destLocked = await this.lockInventoryRow(tx, item.productId, transfer.destinationLocationId, tenantId);
 
         // Source: decrement onHand
         const sourceBefore = sourceLocked.onHand;
@@ -440,6 +453,7 @@ export class InventoryService {
         // Movement: TRANSFER_OUT at source
         await tx.stockMovement.create({
           data: {
+            tenantId,
             productId: item.productId,
             locationId: transfer.sourceLocationId,
             type: MovementType.TRANSFER_OUT,
@@ -456,6 +470,7 @@ export class InventoryService {
         // Movement: TRANSFER_IN at destination
         await tx.stockMovement.create({
           data: {
+            tenantId,
             productId: item.productId,
             locationId: transfer.destinationLocationId,
             type: MovementType.TRANSFER_IN,
@@ -495,21 +510,21 @@ export class InventoryService {
    */
   public static async recordAdjustment(input: AdjustmentInput) {
     return prisma.$transaction(async (tx) => {
-      const { productId, locationId, quantityDelta, reasonCode, notes, performedById } = input;
+      const { tenantId, productId, locationId, quantityDelta, reasonCode, notes, performedById } = input;
 
       if (quantityDelta === 0) {
         throw new AppError('Quantity delta cannot be zero for adjustment', 400);
       }
 
-      // Check product and location exist
-      const product = await tx.product.findUnique({ where: { id: productId } });
-      if (!product) throw new AppError('Product not found', 404);
+      // Check product and location exist and belong to tenant
+      const product = await tx.product.findFirst({ where: { id: productId, tenantId } });
+      if (!product) throw new AppError('Product not found in this workspace', 404);
 
-      const location = await tx.location.findUnique({ where: { id: locationId } });
-      if (!location) throw new AppError('Location not found', 404);
+      const location = await tx.location.findFirst({ where: { id: locationId, tenantId } });
+      if (!location) throw new AppError('Location not found in this workspace', 404);
 
       // Lock inventory row
-      const locked = await this.lockInventoryRow(tx, productId, locationId);
+      const locked = await this.lockInventoryRow(tx, productId, locationId, tenantId);
       const beforeOnHand = locked.onHand;
       const afterOnHand = beforeOnHand + quantityDelta;
 
@@ -536,6 +551,7 @@ export class InventoryService {
       // Write adjustment movement
       const movement = await tx.stockMovement.create({
         data: {
+          tenantId,
           productId,
           locationId,
           type: MovementType.ADJUSTMENT,

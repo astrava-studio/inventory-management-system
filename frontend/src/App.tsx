@@ -10,6 +10,7 @@ import { PurchaseOrdersPage } from './pages/PurchaseOrdersPage';
 import { SalesOrdersPage } from './pages/SalesOrdersPage';
 import { TransfersPage } from './pages/TransfersPage';
 import { LedgerPage } from './pages/LedgerPage';
+import { WorkspacePage } from './pages/WorkspacePage';
 import { Boxes, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -69,13 +70,14 @@ export const App: React.FC = () => {
         >
           {currentTab === 'dashboard' && <DashboardPage onNavigateToTab={handleNavigate} />}
           {currentTab === 'products' && <ProductsPage />}
-          {currentTab === 'inventory' && <InventoryPage />}
+          {currentTab === 'inventory' && <InventoryPage onNavigateToTab={handleNavigate} />}
           {currentTab === 'purchase-orders' && (
             <PurchaseOrdersPage initialPreselectedSku={preselectedSku} />
           )}
           {currentTab === 'sales-orders' && <SalesOrdersPage />}
           {currentTab === 'transfers' && <TransfersPage />}
           {currentTab === 'ledger' && <LedgerPage />}
+          {currentTab === 'workspace' && <WorkspacePage />}
         </motion.div>
       </AnimatePresence>
     </Layout>

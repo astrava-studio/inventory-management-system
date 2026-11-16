@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { Product } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useInventoryData } from '../context/InventoryDataContext';
+import { formatCurrency, getCurrencySymbol } from '../lib/currency';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -14,6 +15,8 @@ import {
   Search,
   Filter,
   Edit2,
+  Archive,
+  RotateCcw,
   AlertCircle,
   Package,
 } from 'lucide-react';
@@ -22,19 +25,13 @@ export const ProductsPage: React.FC = () => {
   const { user } = useAuth();
   const { products: storeProducts, invalidate } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const isAdmin = user?.role === 'ADMIN';
 
   const [products, setProducts] = useState<Product[]>(storeProducts);
   const [isLoading, setIsLoading] = useState(() => storeProducts.length === 0);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
-
-  // Keep local products in sync with background store cache when not searching
-  useEffect(() => {
-    if (!search && selectedCategory === 'ALL' && storeProducts.length > 0) {
-      setProducts(storeProducts);
-      setIsLoading(false);
-    }
-  }, [storeProducts, search, selectedCategory]);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Modal states
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -62,15 +59,16 @@ export const ProductsPage: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
 
   const fetchProducts = async () => {
-    if (products.length === 0) setIsLoading(true);
+    setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (selectedCategory !== 'ALL') params.append('category', selectedCategory);
+      params.append('isActive', showArchived ? 'false' : 'true');
 
       const res = await api.get<{ products: Product[] }>(`/products?${params.toString()}`);
       setProducts(res.products);
-      if (!search && selectedCategory === 'ALL') {
+      if (!search && selectedCategory === 'ALL' && !showArchived) {
         sessionStorage.setItem('astrava_cache_products', JSON.stringify(res.products));
       }
     } catch (err) {
@@ -82,7 +80,7 @@ export const ProductsPage: React.FC = () => {
 
   useEffect(() => {
     fetchProducts();
-  }, [selectedCategory]);
+  }, [selectedCategory, showArchived]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,17 +103,17 @@ export const ProductsPage: React.FC = () => {
     setIsProductModalOpen(true);
   };
 
-  const openEditModal = (p: Product) => {
-    setEditingProduct(p);
+  const openEditModal = (product: Product) => {
+    setEditingProduct(product);
     setFormData({
-      sku: p.sku,
-      name: p.name,
-      description: p.description || '',
-      category: p.category,
-      unitOfMeasure: p.unitOfMeasure,
-      costPrice: p.costPrice,
-      sellingPrice: p.sellingPrice,
-      reorderPoint: p.reorderPoint,
+      sku: product.sku,
+      name: product.name,
+      description: product.description || '',
+      category: product.category,
+      unitOfMeasure: product.unitOfMeasure,
+      costPrice: product.costPrice,
+      sellingPrice: product.sellingPrice,
+      reorderPoint: product.reorderPoint,
     });
     setFormError(null);
     setIsProductModalOpen(true);
@@ -139,6 +137,29 @@ export const ProductsPage: React.FC = () => {
       setFormError(err instanceof Error ? err.message : 'Failed to save product');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleArchiveProduct = async (product: Product) => {
+    if (!window.confirm(`Are you sure you want to archive SKU "${product.sku}"? Active orders or historical ledger entries will be preserved.`)) {
+      return;
+    }
+    try {
+      await api.delete(`/products/${product.id}`);
+      await invalidate('products');
+      fetchProducts();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to archive product');
+    }
+  };
+
+  const handleRestoreProduct = async (product: Product) => {
+    try {
+      await api.patch(`/products/${product.id}/restore`);
+      await invalidate('products');
+      fetchProducts();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to restore product');
     }
   };
 
@@ -192,7 +213,6 @@ export const ProductsPage: React.FC = () => {
             Manage SKUs, categories, pricing, and reorder thresholds.
           </p>
         </div>
-
         {isManagerOrAdmin && (
           <div className="flex items-center gap-2">
             <Button
@@ -241,20 +261,31 @@ export const ProductsPage: React.FC = () => {
             />
           </form>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Filter className="h-3.5 w-3.5 text-slate-400" />
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <Filter className="h-3.5 w-3.5 text-slate-400" />
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Categories</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <Button
+              variant={showArchived ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => setShowArchived(!showArchived)}
+              className="text-xs"
             >
-              <option value="ALL">All Categories</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              {showArchived ? 'Showing Archived SKUs' : 'View Archived SKUs'}
+            </Button>
           </div>
         </div>
       </Card>
@@ -268,7 +299,9 @@ export const ProductsPage: React.FC = () => {
         ) : products.length === 0 ? (
           <div className="text-center py-12 text-slate-400 text-xs">
             <Package className="h-8 w-8 mx-auto text-slate-400 mb-2" />
-            No products found matching the criteria.
+            {showArchived
+              ? 'No archived products found.'
+              : 'No active products found matching the criteria.'}
           </div>
         ) : (
           <div className="overflow-x-auto -mx-5 -my-5">
@@ -309,10 +342,10 @@ export const ProductsPage: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-slate-400">{p.unitOfMeasure}</td>
                       <td className="py-3 px-4 text-right tabular-nums text-slate-300">
-                        ${p.costPrice.toFixed(2)}
+                        {formatCurrency(p.costPrice, user?.currency)}
                       </td>
                       <td className="py-3 px-4 text-right tabular-nums text-slate-200 font-medium">
-                        ${p.sellingPrice.toFixed(2)}
+                        {formatCurrency(p.sellingPrice, user?.currency)}
                       </td>
                       <td className="py-3 px-4 text-right tabular-nums text-emerald-400 font-medium">
                         {marginPct}%
@@ -324,7 +357,11 @@ export const ProductsPage: React.FC = () => {
                         {available}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        {available === 0 ? (
+                        {!p.isActive ? (
+                          <Badge variant="default" size="sm">
+                            Archived
+                          </Badge>
+                        ) : available === 0 ? (
                           <Badge variant="danger" size="sm">
                             Out of Stock
                           </Badge>
@@ -340,13 +377,34 @@ export const ProductsPage: React.FC = () => {
                       </td>
                       {isManagerOrAdmin && (
                         <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => openEditModal(p)}
-                            className="p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-colors"
-                            title="Edit product"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEditModal(p)}
+                              className="p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-colors"
+                              title="Edit product"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+                            {isAdmin && (
+                              p.isActive ? (
+                                <button
+                                  onClick={() => handleArchiveProduct(p)}
+                                  className="p-1 rounded text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
+                                  title="Archive SKU"
+                                >
+                                  <Archive className="h-3.5 w-3.5" />
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleRestoreProduct(p)}
+                                  className="p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
+                                  title="Restore SKU"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </button>
+                              )
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -436,7 +494,9 @@ export const ProductsPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Cost Price ($) *</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Cost Price ({getCurrencySymbol(user?.currency)}) *
+              </label>
               <input
                 type="number"
                 step="0.01"
@@ -448,7 +508,9 @@ export const ProductsPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Selling Price ($) *</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Selling Price ({getCurrencySymbol(user?.currency)}) *
+              </label>
               <input
                 type="number"
                 step="0.01"
@@ -463,7 +525,7 @@ export const ProductsPage: React.FC = () => {
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              Low-Stock Reorder Point (Units)
+              Safety Reorder Point *
             </label>
             <input
               type="number"
@@ -473,12 +535,12 @@ export const ProductsPage: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, reorderPoint: parseInt(e.target.value, 10) || 0 })}
               className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-100 tabular-nums focus:outline-none focus:border-blue-500"
             />
-            <span className="text-[11px] text-slate-400 mt-1 block">
-              Triggers a low-stock alert when available stock drops to this level or below.
-            </span>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Triggers low-stock warnings when available inventory across all locations drops below this level.
+            </p>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-800">
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
             <Button
               type="button"
               variant="outline"
@@ -487,52 +549,57 @@ export const ProductsPage: React.FC = () => {
             >
               Cancel
             </Button>
-            <Button type="submit" variant="primary" size="sm" isLoading={isSaving}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isSaving}
+            >
               {editingProduct ? 'Save Changes' : 'Create Product'}
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* CSV Import Modal */}
+      {/* Bulk CSV Import Modal */}
       <Modal
         isOpen={isCsvModalOpen}
         onClose={() => setIsCsvModalOpen(false)}
         title="Bulk Import Products via CSV"
-        description="Paste raw CSV text or upload below. Required columns: sku, name, category, cost_price, selling_price"
-        maxWidth="xl"
+        description="Paste raw CSV text below. Header must contain: sku, name, category, cost_price, selling_price, reorder_point"
       >
         <form onSubmit={handleCsvImport} className="space-y-4">
           {csvError && (
-            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
-              {csvError}
+            <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{csvError}</span>
             </div>
           )}
+
           {csvSuccess && (
             <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs">
               {csvSuccess}
             </div>
           )}
 
-          <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-            <span className="font-semibold text-slate-300 block">CSV Header Format Example:</span>
-            <code className="text-blue-400 block font-mono text-[10px]">
-              sku,name,category,cost_price,selling_price,reorder_point,unit_of_measure
-            </code>
-            <code className="text-slate-400 block font-mono text-[10px]">
-              SKU-001,Industrial Drill,Power Tools,4200.00,5999.00,10,PCS
-            </code>
+          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-400 font-mono">
+            <span className="text-slate-500 block mb-1 font-sans font-semibold">Example Format:</span>
+            sku,name,category,unit_of_measure,cost_price,selling_price,reorder_point<br />
+            SKU-TOOL-001,Drill Bit Set,Tools,SET,15.50,29.99,10<br />
+            SKU-TOOL-002,Hex Wrench,Tools,PCS,4.20,8.99,25
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">CSV Content</label>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Raw CSV Content *
+            </label>
             <textarea
-              rows={8}
+              rows={6}
               required
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
-              placeholder="Paste your CSV text rows here..."
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-3 text-xs text-slate-100 font-mono focus:outline-none focus:border-blue-500"
+              placeholder="sku,name,category,cost_price,selling_price..."
+              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:border-blue-500"
             />
           </div>
 
@@ -545,8 +612,14 @@ export const ProductsPage: React.FC = () => {
             >
               Close
             </Button>
-            <Button type="submit" variant="primary" size="sm" isLoading={isImporting}>
-              Start Import
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isImporting}
+              icon={<FileSpreadsheet className="h-3.5 w-3.5" />}
+            >
+              Parse & Import
             </Button>
           </div>
         </form>
