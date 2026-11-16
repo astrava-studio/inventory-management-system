@@ -14,6 +14,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { api } from '../lib/api';
+import { useInventoryData } from '../context/InventoryDataContext';
 import { StockMovement, Location, Product, MovementType } from '../types';
 
 interface PaginationMeta {
@@ -24,17 +25,24 @@ interface PaginationMeta {
 }
 
 export const LedgerPage: React.FC = () => {
-  const [movements, setMovements] = useState<StockMovement[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const {
+    ledgerMovements: storeMovements,
+    ledgerTotal: storeTotal,
+    locations: storeLocations,
+    products: storeProducts,
+  } = useInventoryData();
+
+  const [movements, setMovements] = useState<StockMovement[]>(storeMovements);
+  const [locations, setLocations] = useState<Location[]>(storeLocations);
+  const [products, setProducts] = useState<Product[]>(storeProducts);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
     limit: 25,
-    total: 0,
-    totalPages: 1,
+    total: storeTotal || 0,
+    totalPages: Math.max(1, Math.ceil((storeTotal || 0) / 25)),
   });
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => storeMovements.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
@@ -44,6 +52,27 @@ export const LedgerPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Sync with background prefetch store
+  useEffect(() => {
+    if (storeMovements.length > 0 && locationId === 'ALL' && movementType === 'ALL' && productId === 'ALL' && !search && !startDate && !endDate) {
+      setMovements(storeMovements);
+      setPagination((prev) => ({
+        ...prev,
+        total: storeTotal,
+        totalPages: Math.max(1, Math.ceil(storeTotal / prev.limit)),
+      }));
+      setLoading(false);
+    }
+  }, [storeMovements, storeTotal, locationId, movementType, productId, search, startDate, endDate]);
+
+  useEffect(() => {
+    if (storeLocations.length > 0) setLocations(storeLocations);
+  }, [storeLocations]);
+
+  useEffect(() => {
+    if (storeProducts.length > 0) setProducts(storeProducts);
+  }, [storeProducts]);
 
   const fetchLedger = async (pageToFetch = pagination.page) => {
     try {

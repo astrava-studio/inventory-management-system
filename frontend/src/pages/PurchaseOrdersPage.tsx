@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { PurchaseOrder, Location, Product, POStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useInventoryData } from '../context/InventoryDataContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -16,13 +17,40 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
   initialPreselectedSku,
 }) => {
   const { user } = useAuth();
+  const {
+    purchaseOrders: storePOs,
+    locations: storeLocations,
+    products: storeProducts,
+    invalidate,
+  } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(storePOs);
+  const [locations, setLocations] = useState<Location[]>(storeLocations);
+  const [products, setProducts] = useState<Product[]>(storeProducts);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => storePOs.length === 0);
+
+  // Sync with background prefetch store
+  useEffect(() => {
+    if (storePOs.length > 0 && statusFilter === 'ALL') {
+      setPurchaseOrders(storePOs);
+      setIsLoading(false);
+    }
+  }, [storePOs, statusFilter]);
+
+  useEffect(() => {
+    if (storeLocations.length > 0) {
+      setLocations(storeLocations);
+      if (!locationId) setLocationId(storeLocations[0].id);
+    }
+  }, [storeLocations]);
+
+  useEffect(() => {
+    if (storeProducts.length > 0) {
+      setProducts(storeProducts);
+    }
+  }, [storeProducts]);
 
   // Create PO Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -135,6 +163,7 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
       setSupplierName('');
       setNotes('');
       setItems([{ productId: products[0]?.id || '', quantity: 10, unitCost: products[0]?.costPrice || 0 }]);
+      await invalidate('purchaseOrders');
       fetchPurchaseOrders();
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create purchase order');
@@ -146,6 +175,7 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
   const handleMarkOrdered = async (id: string) => {
     try {
       await api.post(`/purchase-orders/${id}/order`);
+      await invalidate('purchaseOrders');
       fetchPurchaseOrders();
     } catch (err) {
       alert('Error updating PO: ' + (err instanceof Error ? err.message : 'Unknown'));
@@ -158,6 +188,7 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
     try {
       await api.post(`/purchase-orders/${receivingPo.id}/receive`);
       setReceivingPo(null);
+      await invalidate('purchaseOrders');
       fetchPurchaseOrders();
     } catch (err) {
       alert('Error receiving PO: ' + (err instanceof Error ? err.message : 'Unknown'));
@@ -170,6 +201,7 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
     if (!confirm('Are you sure you want to cancel this purchase order?')) return;
     try {
       await api.post(`/purchase-orders/${id}/cancel`);
+      await invalidate('purchaseOrders');
       fetchPurchaseOrders();
     } catch (err) {
       alert('Error cancelling PO: ' + (err instanceof Error ? err.message : 'Unknown'));

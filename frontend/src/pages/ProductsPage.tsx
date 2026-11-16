@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Product } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useInventoryData } from '../context/InventoryDataContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -19,25 +20,21 @@ import {
 
 export const ProductsPage: React.FC = () => {
   const { user } = useAuth();
+  const { products: storeProducts, invalidate } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const cached = sessionStorage.getItem('astrava_cache_products');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [isLoading, setIsLoading] = useState(() => {
-    try {
-      return !sessionStorage.getItem('astrava_cache_products');
-    } catch {
-      return true;
-    }
-  });
+  const [products, setProducts] = useState<Product[]>(storeProducts);
+  const [isLoading, setIsLoading] = useState(() => storeProducts.length === 0);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
+
+  // Keep local products in sync with background store cache when not searching
+  useEffect(() => {
+    if (!search && selectedCategory === 'ALL' && storeProducts.length > 0) {
+      setProducts(storeProducts);
+      setIsLoading(false);
+    }
+  }, [storeProducts, search, selectedCategory]);
 
   // Modal states
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -136,6 +133,7 @@ export const ProductsPage: React.FC = () => {
         await api.post('/products', formData);
       }
       setIsProductModalOpen(false);
+      await invalidate('products');
       fetchProducts();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Failed to save product');
@@ -172,6 +170,7 @@ export const ProductsPage: React.FC = () => {
       });
       setCsvSuccess(res.message);
       setCsvText('');
+      await invalidate('products');
       fetchProducts();
     } catch (err: unknown) {
       setCsvError(err instanceof Error ? err.message : 'CSV import failed');

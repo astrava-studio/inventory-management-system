@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Search, LogOut, ShieldCheck, UserCheck, User } from 'lucide-react';
+import { useInventoryData } from '../../context/InventoryDataContext';
+import { Search, LogOut, ShieldCheck, UserCheck, User, Zap, RefreshCw } from 'lucide-react';
 
 interface TopBarProps {
   onSearchSku?: (sku: string) => void;
@@ -8,6 +9,7 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ onSearchSku }) => {
   const { user, logout } = useAuth();
+  const { isPrefetching, isPrefetchDone } = useInventoryData();
 
   const getRoleBadge = (role?: string) => {
     switch (role) {
@@ -51,6 +53,22 @@ export const TopBar: React.FC<TopBarProps> = ({ onSearchSku }) => {
 
       {/* User Info & Actions */}
       <div className="flex items-center gap-4">
+        {isPrefetching && (
+          <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20 font-medium">
+            <RefreshCw className="h-3 w-3 animate-spin text-blue-400" />
+            Prefetching pages...
+          </span>
+        )}
+        {isPrefetchDone && !isPrefetching && (
+          <span
+            className="hidden md:inline-flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-medium"
+            title="All pages cached in memory for instant switching"
+          >
+            <Zap className="h-3 w-3 text-emerald-400 fill-emerald-400/20" />
+            Instant Cache Ready
+          </span>
+        )}
+
         {getRoleBadge(user?.role)}
 
         <div className="text-right hidden sm:block">

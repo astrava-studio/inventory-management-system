@@ -20,6 +20,7 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useInventoryData } from '../context/InventoryDataContext';
 import { StockTransfer, Location, Product, TransferStatus } from '../types';
 
 interface TransferItemInput {
@@ -29,12 +30,18 @@ interface TransferItemInput {
 
 export const TransfersPage: React.FC = () => {
   const { user } = useAuth();
+  const {
+    transfers: storeTransfers,
+    locations: storeLocations,
+    products: storeProducts,
+    invalidate,
+  } = useInventoryData();
   const isStaff = user?.role === 'STAFF';
 
-  const [transfers, setTransfers] = useState<StockTransfer[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [transfers, setTransfers] = useState<StockTransfer[]>(storeTransfers);
+  const [locations, setLocations] = useState<Location[]>(storeLocations);
+  const [products, setProducts] = useState<Product[]>(storeProducts);
+  const [loading, setLoading] = useState(() => storeTransfers.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   // Filters
@@ -42,11 +49,6 @@ export const TransfersPage: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<string>('ALL');
   const [selectedDestination, setSelectedDestination] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Modals
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
 
   // Form State
   const [sourceId, setSourceId] = useState('');
@@ -56,6 +58,35 @@ export const TransfersPage: React.FC = () => {
     { productId: '', quantity: 1 },
   ]);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Sync with background prefetch store
+  useEffect(() => {
+    if (storeTransfers.length > 0 && selectedStatus === 'ALL' && selectedSource === 'ALL' && selectedDestination === 'ALL' && !searchQuery) {
+      setTransfers(storeTransfers);
+      setLoading(false);
+    }
+  }, [storeTransfers, selectedStatus, selectedSource, selectedDestination, searchQuery]);
+
+  useEffect(() => {
+    if (storeLocations.length > 0) {
+      setLocations(storeLocations);
+      if (storeLocations.length >= 2 && !sourceId && !destinationId) {
+        setSourceId(storeLocations[0].id);
+        setDestinationId(storeLocations[1].id);
+      }
+    }
+  }, [storeLocations, sourceId, destinationId]);
+
+  useEffect(() => {
+    if (storeProducts.length > 0) {
+      setProducts(storeProducts);
+    }
+  }, [storeProducts]);
+
+  // Modals
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const fetchTransfers = async () => {
     try {
@@ -159,6 +190,7 @@ export const TransfersPage: React.FC = () => {
       });
 
       setIsCreateOpen(false);
+      await invalidate('transfers');
       fetchTransfers();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to create transfer');
@@ -175,6 +207,7 @@ export const TransfersPage: React.FC = () => {
     try {
       setActionLoading(true);
       await api.post(`/transfers/${transferId}/dispatch`);
+      await invalidate('transfers');
       fetchTransfers();
       if (selectedTransfer?.id === transferId) {
         setSelectedTransfer(null);
@@ -198,6 +231,7 @@ export const TransfersPage: React.FC = () => {
     try {
       setActionLoading(true);
       await api.post(`/transfers/${transferId}/complete`);
+      await invalidate('transfers');
       fetchTransfers();
       if (selectedTransfer?.id === transferId) {
         setSelectedTransfer(null);
@@ -217,6 +251,7 @@ export const TransfersPage: React.FC = () => {
     try {
       setActionLoading(true);
       await api.post(`/transfers/${transferId}/cancel`);
+      await invalidate('transfers');
       fetchTransfers();
       if (selectedTransfer?.id === transferId) {
         setSelectedTransfer(null);

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Location, InventoryMatrixRow } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useInventoryData } from '../context/InventoryDataContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -10,33 +11,32 @@ import { SlidersHorizontal, AlertTriangle, Layers, ArrowUpDown } from 'lucide-re
 
 export const InventoryPage: React.FC = () => {
   const { user } = useAuth();
+  const {
+    inventory: storeInventory,
+    locations: storeLocations,
+    invalidate,
+  } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const [locations, setLocations] = useState<Location[]>(() => {
-    try {
-      const cached = sessionStorage.getItem('astrava_cache_locations');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [locations, setLocations] = useState<Location[]>(storeLocations);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ALL');
-  const [inventory, setInventory] = useState<InventoryMatrixRow[]>(() => {
-    try {
-      const cached = sessionStorage.getItem('astrava_cache_inventory');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [isLoading, setIsLoading] = useState(() => {
-    try {
-      return !sessionStorage.getItem('astrava_cache_inventory');
-    } catch {
-      return true;
-    }
-  });
+  const [inventory, setInventory] = useState<InventoryMatrixRow[]>(storeInventory);
+  const [isLoading, setIsLoading] = useState(() => storeInventory.length === 0);
   const [lowStockOnly, setLowStockOnly] = useState(false);
+
+  // Sync with store cache when no active local filter
+  useEffect(() => {
+    if (storeLocations.length > 0) {
+      setLocations(storeLocations);
+    }
+  }, [storeLocations]);
+
+  useEffect(() => {
+    if (selectedLocationId === 'ALL' && !lowStockOnly && storeInventory.length > 0) {
+      setInventory(storeInventory);
+      setIsLoading(false);
+    }
+  }, [storeInventory, selectedLocationId, lowStockOnly]);
 
   // Adjustment Modal
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
@@ -113,6 +113,7 @@ export const InventoryPage: React.FC = () => {
         notes: adjustNotes,
       });
       setIsAdjustModalOpen(false);
+      await invalidate('inventory');
       fetchInventory();
     } catch (err: unknown) {
       setAdjustError(err instanceof Error ? err.message : 'Adjustment failed');

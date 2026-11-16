@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { SalesOrder, Location, Product, SOStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useInventoryData } from '../context/InventoryDataContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -17,13 +18,40 @@ import {
 
 export const SalesOrdersPage: React.FC = () => {
   const { user } = useAuth();
+  const {
+    salesOrders: storeSOs,
+    locations: storeLocations,
+    products: storeProducts,
+    invalidate,
+  } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(storeSOs);
+  const [locations, setLocations] = useState<Location[]>(storeLocations);
+  const [products, setProducts] = useState<Product[]>(storeProducts);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => storeSOs.length === 0);
+
+  // Sync with background prefetch store
+  useEffect(() => {
+    if (storeSOs.length > 0 && statusFilter === 'ALL') {
+      setSalesOrders(storeSOs);
+      setIsLoading(false);
+    }
+  }, [storeSOs, statusFilter]);
+
+  useEffect(() => {
+    if (storeLocations.length > 0) {
+      setLocations(storeLocations);
+      if (!locationId) setLocationId(storeLocations[0].id);
+    }
+  }, [storeLocations]);
+
+  useEffect(() => {
+    if (storeProducts.length > 0) {
+      setProducts(storeProducts);
+    }
+  }, [storeProducts]);
 
   // Create SO Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -118,6 +146,7 @@ export const SalesOrdersPage: React.FC = () => {
       setCustomerName('');
       setNotes('');
       setItems([{ productId: products[0]?.id || '', quantity: 1, unitPrice: products[0]?.sellingPrice || 0 }]);
+      await invalidate('salesOrders');
       fetchSalesOrders();
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create sales order');
@@ -129,6 +158,7 @@ export const SalesOrdersPage: React.FC = () => {
   const handleConfirmOrder = async (id: string) => {
     try {
       await api.post(`/sales-orders/${id}/confirm`);
+      await invalidate('salesOrders');
       fetchSalesOrders();
     } catch (err) {
       alert('Confirmation failed: ' + (err instanceof Error ? err.message : 'Insufficient stock available'));
@@ -138,6 +168,7 @@ export const SalesOrdersPage: React.FC = () => {
   const handleFulfillOrder = async (id: string) => {
     try {
       await api.post(`/sales-orders/${id}/fulfill`);
+      await invalidate('salesOrders');
       fetchSalesOrders();
     } catch (err) {
       alert('Fulfillment failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -148,6 +179,7 @@ export const SalesOrdersPage: React.FC = () => {
     if (!confirm('Are you sure you want to cancel this order? Reserved stock will be released.')) return;
     try {
       await api.post(`/sales-orders/${id}/cancel`);
+      await invalidate('salesOrders');
       fetchSalesOrders();
     } catch (err) {
       alert('Cancellation failed: ' + (err instanceof Error ? err.message : 'Unknown error'));

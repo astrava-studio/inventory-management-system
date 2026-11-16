@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../lib/api';
-import { DashboardData } from '../types';
+import React from 'react';
+import { useInventoryData } from '../context/InventoryDataContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -14,6 +13,7 @@ import {
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -21,32 +21,17 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab }) => {
-  const [data, setData] = useState<DashboardData | null>(() => {
-    try {
-      const cached = sessionStorage.getItem('astrava_cache_dashboard');
-      return cached ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [isLoading, setIsLoading] = useState(!data);
+  const {
+    dashboard: data,
+    isDashboardLoading: isLoading,
+    fetchDashboard,
+    isPrefetching,
+    isPrefetchDone,
+  } = useInventoryData();
 
-  const fetchKpis = async () => {
-    if (!data) setIsLoading(true);
-    try {
-      const res = await api.get<DashboardData>('/dashboard/kpis');
-      setData(res);
-      sessionStorage.setItem('astrava_cache_dashboard', JSON.stringify(res));
-    } catch (err) {
-      console.error('Failed to load dashboard KPIs:', err);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleManualRefresh = () => {
+    fetchDashboard(true);
   };
-
-  useEffect(() => {
-    fetchKpis();
-  }, []);
 
   return (
     <div className="space-y-6">
@@ -59,10 +44,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToTab })
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isPrefetching && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20 font-medium">
+              <RefreshCw className="h-3 w-3 animate-spin text-blue-400" />
+              Caching background tabs...
+            </span>
+          )}
+          {isPrefetchDone && !isPrefetching && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-medium">
+              <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+              Memory cache ready
+            </span>
+          )}
           <Button
             variant="outline"
             size="sm"
-            onClick={fetchKpis}
+            onClick={handleManualRefresh}
             isLoading={isLoading}
             icon={<RefreshCw className="h-3.5 w-3.5" />}
           >
