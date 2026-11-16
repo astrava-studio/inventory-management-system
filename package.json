@@ -7,6 +7,8 @@
     "frontend"
   ],
   "scripts": {
+    "build": "npm run prisma:generate --workspace=backend && npm run build --workspace=backend",
+    "start": "npm run start --workspace=backend",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:frontend": "npm run dev --workspace=frontend",
     "build:backend": "npm run build --workspace=backend",
@@ -18,5 +20,8 @@
     "prisma:migrate": "npm run prisma:migrate --workspace=backend",
     "prisma:seed": "npm run prisma:seed --workspace=backend",
     "deploy:frontend": "npm run build:frontend && firebase deploy --only hosting"
+  },
+  "prisma": {
+    "schema": "backend/prisma/schema.prisma"
   }
 }
