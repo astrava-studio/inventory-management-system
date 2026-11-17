@@ -10,6 +10,8 @@ import {
   SalesOrder,
   StockTransfer,
   StockMovement,
+  Workspace,
+  User,
 } from '../types';
 
 export type InvalidationScope =
@@ -20,6 +22,8 @@ export type InvalidationScope =
   | 'salesOrders'
   | 'transfers'
   | 'ledger'
+  | 'workspace'
+  | 'team'
   | 'all';
 
 interface LedgerFetchParams {
@@ -42,6 +46,8 @@ interface InventoryDataContextType {
   transfers: StockTransfer[];
   ledgerMovements: StockMovement[];
   ledgerTotal: number;
+  workspace: Workspace | null;
+  team: User[];
 
   // Status flags
   isDashboardLoading: boolean;
@@ -57,6 +63,8 @@ interface InventoryDataContextType {
   fetchSalesOrders: (force?: boolean) => Promise<SalesOrder[]>;
   fetchTransfers: (force?: boolean) => Promise<StockTransfer[]>;
   fetchLedger: (params?: LedgerFetchParams) => Promise<{ movements: StockMovement[]; total: number }>;
+  fetchWorkspace: (force?: boolean) => Promise<Workspace | null>;
+  fetchTeam: (force?: boolean) => Promise<User[]>;
 
   // Smart Invalidation
   invalidate: (scope: InvalidationScope) => Promise<void>;
@@ -115,6 +123,12 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
   const [ledgerTotal, setLedgerTotal] = useState<number>(() =>
     readSessionCache<number>('astrava_cache_ledger_total', 0)
   );
+  const [workspace, setWorkspace] = useState<Workspace | null>(() =>
+    readSessionCache<Workspace | null>('astrava_cache_workspace', null)
+  );
+  const [team, setTeam] = useState<User[]>(() =>
+    readSessionCache<User[]>('astrava_cache_team', [])
+  );
 
   const [isDashboardLoading, setIsDashboardLoading] = useState<boolean>(!dashboard);
   const [isPrefetching, setIsPrefetching] = useState<boolean>(false);
@@ -137,6 +151,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
       setTransfers([]);
       setLedgerMovements([]);
       setLedgerTotal(0);
+      setWorkspace(null);
+      setTeam([]);
       setIsPrefetchDone(false);
       sessionStorage.clear();
       prefetchStartedRef.current = false;
@@ -153,6 +169,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
       setTransfers([]);
       setLedgerMovements([]);
       setLedgerTotal(0);
+      setWorkspace(null);
+      setTeam([]);
       setIsPrefetchDone(false);
       sessionStorage.clear();
       prefetchStartedRef.current = false;
@@ -365,23 +383,72 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
     []
   );
 
+  // 9. Fetch Workspace Profile
+  const fetchWorkspace = useCallback(async (force = false): Promise<Workspace | null> => {
+    if (!force && inFlightRef.current['workspace'] !== undefined) {
+      return inFlightRef.current['workspace'] as Promise<Workspace | null>;
+    }
+
+    const promise = (async () => {
+      try {
+        const res = await api.get<{ workspace: Workspace }>('/workspace');
+        setWorkspace(res.workspace);
+        writeSessionCache('astrava_cache_workspace', res.workspace);
+        return res.workspace;
+      } catch (err) {
+        console.error('[InventoryData] Failed to fetch workspace:', err);
+        return null;
+      } finally {
+        delete inFlightRef.current['workspace'];
+      }
+    })();
+
+    inFlightRef.current['workspace'] = promise;
+    return promise;
+  }, []);
+
+  // 10. Fetch Team Members
+  const fetchTeam = useCallback(async (force = false): Promise<User[]> => {
+    if (!force && inFlightRef.current['team'] !== undefined) {
+      return inFlightRef.current['team'] as Promise<User[]>;
+    }
+
+    const promise = (async () => {
+      try {
+        const res = await api.get<{ users: User[] }>('/users');
+        setTeam(res.users);
+        writeSessionCache('astrava_cache_team', res.users);
+        return res.users;
+      } catch (err) {
+        console.error('[InventoryData] Failed to fetch team:', err);
+        return [];
+      } finally {
+        delete inFlightRef.current['team'];
+      }
+    })();
+
+    inFlightRef.current['team'] = promise;
+    return promise;
+  }, []);
+
   // Background Prefetcher: Once dashboard is fetched, quietly load all other pages
   const prefetchAllBackground = useCallback(async () => {
     if (isPrefetching) return;
     setIsPrefetching(true);
 
     try {
-      // Step A: Load core taxonomies (locations + products)
-      await Promise.allSettled([fetchLocations(), fetchProducts()]);
-
-      // Step B: Load inventory matrix & stock transfers
-      await Promise.allSettled([fetchInventory(), fetchTransfers()]);
-
-      // Step C: Load orders (purchase orders + sales orders)
-      await Promise.allSettled([fetchPurchaseOrders(), fetchSalesOrders()]);
-
-      // Step D: Load default ledger history
-      await fetchLedger({ page: 1, limit: 25 });
+      // Fire parallel background requests for all domains
+      await Promise.allSettled([
+        fetchLocations(),
+        fetchProducts(),
+        fetchInventory(),
+        fetchTransfers(),
+        fetchPurchaseOrders(),
+        fetchSalesOrders(),
+        fetchLedger({ page: 1, limit: 25 }),
+        fetchWorkspace(),
+        fetchTeam(),
+      ]);
 
       setIsPrefetchDone(true);
       console.log('[InventoryData] Background prefetch completed. All pages cached in memory & storage.');
@@ -399,6 +466,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
     fetchPurchaseOrders,
     fetchSalesOrders,
     fetchLedger,
+    fetchWorkspace,
+    fetchTeam,
   ]);
 
   // Initial Load Flow: On login, fetch Dashboard first, then launch background prefetch
@@ -414,6 +483,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
       setTransfers([]);
       setLedgerMovements([]);
       setLedgerTotal(0);
+      setWorkspace(null);
+      setTeam([]);
       prefetchStartedRef.current = false;
       return;
     }
@@ -486,6 +557,14 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
           ]);
           break;
 
+        case 'workspace':
+          await fetchWorkspace(true);
+          break;
+
+        case 'team':
+          await fetchTeam(true);
+          break;
+
         case 'dashboard':
           await fetchDashboard(true);
           break;
@@ -505,6 +584,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
             fetchSalesOrders(true),
             fetchTransfers(true),
             fetchLedger({ page: 1, limit: 25 }),
+            fetchWorkspace(true),
+            fetchTeam(true),
           ]);
           break;
       }
@@ -518,6 +599,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
       fetchSalesOrders,
       fetchTransfers,
       fetchLocations,
+      fetchWorkspace,
+      fetchTeam,
     ]
   );
 
@@ -533,6 +616,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
         transfers,
         ledgerMovements,
         ledgerTotal,
+        workspace,
+        team,
         isDashboardLoading,
         isPrefetching,
         isPrefetchDone,
@@ -544,6 +629,8 @@ export const InventoryDataProvider: React.FC<{ children: React.ReactNode }> = ({
         fetchSalesOrders,
         fetchTransfers,
         fetchLedger,
+        fetchWorkspace,
+        fetchTeam,
         invalidate,
         prefetchAllBackground,
       }}

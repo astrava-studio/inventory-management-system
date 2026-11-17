@@ -33,6 +33,14 @@ export const ProductsPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [showArchived, setShowArchived] = useState(false);
 
+  // Sync with background prefetch store
+  useEffect(() => {
+    if (storeProducts.length > 0 && selectedCategory === 'ALL' && !showArchived && !search) {
+      setProducts(storeProducts);
+      setIsLoading(false);
+    }
+  }, [storeProducts, selectedCategory, showArchived, search]);
+
   // Modal states
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
@@ -58,8 +66,8 @@ export const ProductsPage: React.FC = () => {
   const [csvSuccess, setCsvSuccess] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
-  const fetchProducts = async () => {
-    setIsLoading(true);
+  const fetchProducts = async (showSpinner = false) => {
+    if (showSpinner) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
@@ -79,7 +87,8 @@ export const ProductsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchProducts();
+    const shouldShowSpinner = products.length === 0 && storeProducts.length === 0;
+    fetchProducts(shouldShowSpinner);
   }, [selectedCategory, showArchived]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {

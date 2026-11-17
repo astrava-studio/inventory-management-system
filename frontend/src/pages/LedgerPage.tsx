@@ -16,7 +16,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { api } from '../lib/api';
 import { useInventoryData } from '../context/InventoryDataContext';
-import { StockMovement, Location, Product, MovementType } from '../types';
+import { StockMovement, MovementType } from '../types';
 
 interface PaginationMeta {
   page: number;
@@ -29,13 +29,11 @@ export const LedgerPage: React.FC = () => {
   const {
     ledgerMovements: storeMovements,
     ledgerTotal: storeTotal,
-    locations: storeLocations,
-    products: storeProducts,
+    locations,
+    products,
   } = useInventoryData();
 
   const [movements, setMovements] = useState<StockMovement[]>(storeMovements);
-  const [locations, setLocations] = useState<Location[]>(storeLocations);
-  const [products, setProducts] = useState<Product[]>(storeProducts);
   const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1,
     limit: 25,
@@ -67,17 +65,9 @@ export const LedgerPage: React.FC = () => {
     }
   }, [storeMovements, storeTotal, locationId, movementType, productId, search, startDate, endDate]);
 
-  useEffect(() => {
-    if (storeLocations.length > 0) setLocations(storeLocations);
-  }, [storeLocations]);
-
-  useEffect(() => {
-    if (storeProducts.length > 0) setProducts(storeProducts);
-  }, [storeProducts]);
-
-  const fetchLedger = async (pageToFetch = pagination.page) => {
+  const fetchLedger = async (pageToFetch = pagination.page, showSpinner = false) => {
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       setError(null);
 
       const params = new URLSearchParams();
@@ -105,25 +95,9 @@ export const LedgerPage: React.FC = () => {
     }
   };
 
-  const fetchFiltersData = async () => {
-    try {
-      const [locRes, prodRes] = await Promise.all([
-        api.get<{ locations: Location[] }>('/locations'),
-        api.get<{ products: Product[] }>('/products'),
-      ]);
-      setLocations(locRes.locations || []);
-      setProducts(prodRes.products || []);
-    } catch (err) {
-      console.error('Failed to load filter metadata', err);
-    }
-  };
-
   useEffect(() => {
-    fetchFiltersData();
-  }, []);
-
-  useEffect(() => {
-    fetchLedger(1);
+    const shouldShowSpinner = movements.length === 0 && storeMovements.length === 0;
+    fetchLedger(1, shouldShowSpinner);
   }, [locationId, movementType, productId, startDate, endDate]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {

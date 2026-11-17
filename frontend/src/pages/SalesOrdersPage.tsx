@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { SalesOrder, Location, Product, SOStatus } from '../types';
+import { SalesOrder, SOStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useInventoryData } from '../context/InventoryDataContext';
 import { formatCurrency } from '../lib/currency';
@@ -21,38 +21,25 @@ export const SalesOrdersPage: React.FC = () => {
   const { user } = useAuth();
   const {
     salesOrders: storeSOs,
-    locations: storeLocations,
-    products: storeProducts,
+    locations,
+    products,
     invalidate,
   } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>(storeSOs);
-  const [locations, setLocations] = useState<Location[]>(storeLocations);
-  const [products, setProducts] = useState<Product[]>(storeProducts);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState(() => storeSOs.length === 0);
 
   // Sync with background prefetch store
   useEffect(() => {
-    if (storeSOs.length > 0 && statusFilter === 'ALL') {
+    if (statusFilter === 'ALL') {
       setSalesOrders(storeSOs);
-      setIsLoading(false);
+      if (storeSOs.length > 0) {
+        setIsLoading(false);
+      }
     }
   }, [storeSOs, statusFilter]);
-
-  useEffect(() => {
-    if (storeLocations.length > 0) {
-      setLocations(storeLocations);
-      if (!locationId) setLocationId(storeLocations[0].id);
-    }
-  }, [storeLocations]);
-
-  useEffect(() => {
-    if (storeProducts.length > 0) {
-      setProducts(storeProducts);
-    }
-  }, [storeProducts]);
 
   // Create SO Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -65,24 +52,15 @@ export const SalesOrdersPage: React.FC = () => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchAuxiliaryData = async () => {
-    try {
-      const [locRes, prodRes] = await Promise.all([
-        api.get<{ locations: Location[] }>('/locations'),
-        api.get<{ products: Product[] }>('/products'),
-      ]);
-      setLocations(locRes.locations);
-      setProducts(prodRes.products);
-      if (locRes.locations.length > 0 && !locationId) {
-        setLocationId(locRes.locations[0].id);
-      }
-    } catch (err) {
-      console.error('Failed to load auxiliary SO data:', err);
+  // Set default location once locations are available
+  useEffect(() => {
+    if (locations.length > 0 && !locationId) {
+      setLocationId(locations[0].id);
     }
-  };
+  }, [locations, locationId]);
 
-  const fetchSalesOrders = async () => {
-    setIsLoading(true);
+  const fetchSalesOrders = async (showSpinner = false) => {
+    if (showSpinner) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'ALL') params.append('status', statusFilter);
@@ -96,11 +74,9 @@ export const SalesOrdersPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchAuxiliaryData();
-  }, []);
-
-  useEffect(() => {
-    fetchSalesOrders();
+    // Only show full loading spinner if we have literally zero cached data
+    const shouldShowSpinner = salesOrders.length === 0 && storeSOs.length === 0;
+    fetchSalesOrders(shouldShowSpinner);
   }, [statusFilter]);
 
   const handleAddItem = () => {

@@ -82,8 +82,8 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToTab })
     }
   };
 
-  const fetchInventory = async () => {
-    if (inventory.length === 0) setIsLoading(true);
+  const fetchInventory = async (showSpinner = false) => {
+    if (showSpinner) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (selectedLocationId !== 'ALL') params.append('locationId', selectedLocationId);
@@ -104,11 +104,8 @@ export const InventoryPage: React.FC<InventoryPageProps> = ({ onNavigateToTab })
   };
 
   useEffect(() => {
-    fetchLocations();
-  }, []);
-
-  useEffect(() => {
-    fetchInventory();
+    const shouldShowSpinner = inventory.length === 0 && storeInventory.length === 0;
+    fetchInventory(shouldShowSpinner);
   }, [selectedLocationId, lowStockOnly]);
 
   const openAdjustModal = (productId: string, locationId?: string) => {

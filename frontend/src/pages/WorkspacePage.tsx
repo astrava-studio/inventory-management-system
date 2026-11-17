@@ -19,19 +19,39 @@ import {
 
 export const WorkspacePage: React.FC = () => {
   const { user, updateUser } = useAuth();
-  const { invalidate } = useInventoryData();
+  const {
+    workspace: storeWorkspace,
+    team: storeTeam,
+    invalidate,
+  } = useInventoryData();
   const isAdmin = user?.role === 'ADMIN';
 
   // Workspace profile
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [workspaceName, setWorkspaceName] = useState('');
-  const [currency, setCurrency] = useState('INR');
+  const [workspace, setWorkspace] = useState<Workspace | null>(storeWorkspace);
+  const [workspaceName, setWorkspaceName] = useState(storeWorkspace?.name || '');
+  const [currency, setCurrency] = useState(storeWorkspace?.currency || 'INR');
   const [isUpdatingWorkspace, setIsUpdatingWorkspace] = useState(false);
   const [workspaceSuccess, setWorkspaceSuccess] = useState<string | null>(null);
 
   // Team users
-  const [team, setTeam] = useState<User[]>([]);
-  const [isLoadingTeam, setIsLoadingTeam] = useState(false);
+  const [team, setTeam] = useState<User[]>(storeTeam);
+  const [isLoadingTeam, setIsLoadingTeam] = useState(() => storeTeam.length === 0);
+
+  // Sync with context store
+  useEffect(() => {
+    if (storeWorkspace) {
+      setWorkspace(storeWorkspace);
+      setWorkspaceName(storeWorkspace.name);
+      setCurrency(storeWorkspace.currency);
+    }
+  }, [storeWorkspace]);
+
+  useEffect(() => {
+    if (storeTeam.length > 0) {
+      setTeam(storeTeam);
+      setIsLoadingTeam(false);
+    }
+  }, [storeTeam]);
 
   // Invite modal
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -61,8 +81,8 @@ export const WorkspacePage: React.FC = () => {
     }
   };
 
-  const fetchTeam = async () => {
-    setIsLoadingTeam(true);
+  const fetchTeam = async (showSpinner = false) => {
+    if (showSpinner) setIsLoadingTeam(true);
     try {
       const res = await api.get<{ users: User[] }>('/users');
       setTeam(res.users);
@@ -75,7 +95,8 @@ export const WorkspacePage: React.FC = () => {
 
   useEffect(() => {
     fetchWorkspace();
-    fetchTeam();
+    const shouldShowSpinner = team.length === 0 && storeTeam.length === 0;
+    fetchTeam(shouldShowSpinner);
   }, []);
 
   const handleUpdateWorkspace = async (e: React.FormEvent) => {
@@ -91,7 +112,7 @@ export const WorkspacePage: React.FC = () => {
       setWorkspace(res.workspace);
       updateUser({ workspaceName: res.workspace.name, currency: res.workspace.currency });
       setWorkspaceSuccess('Workspace configuration saved successfully');
-      await invalidate('all');
+      await invalidate('workspace');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to update workspace');
     } finally {
@@ -117,7 +138,8 @@ export const WorkspacePage: React.FC = () => {
       setInviteEmail('');
       setInvitePassword('');
       setInviteRole('STAFF');
-      fetchTeam();
+      await invalidate('team');
+      fetchTeam(false);
     } catch (err: unknown) {
       setInviteError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
@@ -135,7 +157,8 @@ export const WorkspacePage: React.FC = () => {
       await api.patch(`/users/${targetUser.id}/status`, {
         isActive: !targetUser.isActive,
       });
-      fetchTeam();
+      await invalidate('team');
+      fetchTeam(false);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Failed to update user status');
     }

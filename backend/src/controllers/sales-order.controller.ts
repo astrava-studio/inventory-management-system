@@ -59,11 +59,7 @@ export const getSalesOrders = async (
         items: {
           include: {
             product: {
-              include: {
-                inventoryLevels: {
-                  where: { tenantId },
-                },
-              },
+              select: { id: true, sku: true, name: true, unitOfMeasure: true },
             },
           },
         },
@@ -72,26 +68,20 @@ export const getSalesOrders = async (
 
     const enriched = salesOrders.map((so) => {
       const totalAmount = so.items.reduce(
-        (sum: number, item: SalesOrderItemWithProduct) => sum + item.quantity * Number(item.unitPrice),
+        (sum: number, item: any) => sum + item.quantity * Number(item.unitPrice),
         0
       );
-      const totalUnits = so.items.reduce((sum: number, item: SalesOrderItemWithProduct) => sum + item.quantity, 0);
+      const totalUnits = so.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
 
       return {
         ...so,
         totalAmount: Math.round(totalAmount * 100) / 100,
         totalUnits,
-        items: so.items.map((i: SalesOrderItemWithProduct) => {
-          const locLevel = i.product.inventoryLevels.find((l) => l.locationId === so.locationId);
-          const onHand = locLevel?.onHand ?? 0;
-          const reserved = locLevel?.reserved ?? 0;
-          return {
-            ...i,
-            unitPrice: Number(i.unitPrice),
-            lineTotal: Math.round(i.quantity * Number(i.unitPrice) * 100) / 100,
-            availableAtLocation: onHand - reserved,
-          };
-        }),
+        items: so.items.map((i: any) => ({
+          ...i,
+          unitPrice: Number(i.unitPrice),
+          lineTotal: Math.round(i.quantity * Number(i.unitPrice) * 100) / 100,
+        })),
       };
     });
 

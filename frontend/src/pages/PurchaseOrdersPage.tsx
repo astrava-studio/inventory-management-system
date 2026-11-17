@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { PurchaseOrder, Location, Product, POStatus } from '../types';
+import { PurchaseOrder, POStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useInventoryData } from '../context/InventoryDataContext';
 import { formatCurrency } from '../lib/currency';
@@ -20,15 +20,13 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
   const { user } = useAuth();
   const {
     purchaseOrders: storePOs,
-    locations: storeLocations,
-    products: storeProducts,
+    locations,
+    products,
     invalidate,
   } = useInventoryData();
   const isManagerOrAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(storePOs);
-  const [locations, setLocations] = useState<Location[]>(storeLocations);
-  const [products, setProducts] = useState<Product[]>(storeProducts);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [isLoading, setIsLoading] = useState(() => storePOs.length === 0);
 
@@ -39,19 +37,6 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
       setIsLoading(false);
     }
   }, [storePOs, statusFilter]);
-
-  useEffect(() => {
-    if (storeLocations.length > 0) {
-      setLocations(storeLocations);
-      if (!locationId) setLocationId(storeLocations[0].id);
-    }
-  }, [storeLocations]);
-
-  useEffect(() => {
-    if (storeProducts.length > 0) {
-      setProducts(storeProducts);
-    }
-  }, [storeProducts]);
 
   // Create PO Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -64,28 +49,19 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
   const [createError, setCreateError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Set default location once locations are available
+  useEffect(() => {
+    if (locations.length > 0 && !locationId) {
+      setLocationId(locations[0].id);
+    }
+  }, [locations, locationId]);
+
   // Receive Confirmation Modal
   const [receivingPo, setReceivingPo] = useState<PurchaseOrder | null>(null);
   const [isReceiving, setIsReceiving] = useState(false);
 
-  const fetchAuxiliaryData = async () => {
-    try {
-      const [locRes, prodRes] = await Promise.all([
-        api.get<{ locations: Location[] }>('/locations'),
-        api.get<{ products: Product[] }>('/products'),
-      ]);
-      setLocations(locRes.locations);
-      setProducts(prodRes.products);
-      if (locRes.locations.length > 0 && !locationId) {
-        setLocationId(locRes.locations[0].id);
-      }
-    } catch (err) {
-      console.error('Failed to load auxiliary PO data:', err);
-    }
-  };
-
-  const fetchPurchaseOrders = async () => {
-    setIsLoading(true);
+  const fetchPurchaseOrders = async (showSpinner = false) => {
+    if (showSpinner) setIsLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'ALL') params.append('status', statusFilter);
@@ -101,11 +77,8 @@ export const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({
   };
 
   useEffect(() => {
-    fetchAuxiliaryData();
-  }, []);
-
-  useEffect(() => {
-    fetchPurchaseOrders();
+    const shouldShowSpinner = purchaseOrders.length === 0 && storePOs.length === 0;
+    fetchPurchaseOrders(shouldShowSpinner);
   }, [statusFilter]);
 
   // Handle auto-open if navigated with preselected SKU from dashboard

@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import { Layout } from './components/layout/Layout';
 import { LoginPage } from './pages/LoginPage';
@@ -17,6 +16,13 @@ export const App: React.FC = () => {
   const { user, isLoading } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [preselectedSku, setPreselectedSku] = useState<string | undefined>(undefined);
+
+  // Keep-alive tracking: Keep rendered tabs resident in DOM/memory for 0ms tab switching
+  const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>({ dashboard: true });
+
+  useEffect(() => {
+    setVisitedTabs((prev) => (prev[currentTab] ? prev : { ...prev, [currentTab]: true }));
+  }, [currentTab]);
 
   if (isLoading) {
     return (
@@ -59,27 +65,85 @@ export const App: React.FC = () => {
       }}
       onSearchSku={handleSearchSku}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={currentTab}
-          initial={{ opacity: 0, y: 8, scale: 0.995 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -6, scale: 0.995 }}
-          transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-          className="space-y-6"
+      <div className="space-y-6">
+        {/* Dashboard Tab - Always resident in DOM */}
+        <div
+          style={{ display: currentTab === 'dashboard' ? 'block' : 'none' }}
+          className={currentTab === 'dashboard' ? 'animate-in fade-in duration-200' : ''}
         >
-          {currentTab === 'dashboard' && <DashboardPage onNavigateToTab={handleNavigate} />}
-          {currentTab === 'products' && <ProductsPage />}
-          {currentTab === 'inventory' && <InventoryPage onNavigateToTab={handleNavigate} />}
-          {currentTab === 'purchase-orders' && (
+          <DashboardPage onNavigateToTab={handleNavigate} />
+        </div>
+
+        {/* Products Tab */}
+        {visitedTabs['products'] && (
+          <div
+            style={{ display: currentTab === 'products' ? 'block' : 'none' }}
+            className={currentTab === 'products' ? 'animate-in fade-in duration-200' : ''}
+          >
+            <ProductsPage />
+          </div>
+        )}
+
+        {/* Inventory Matrix Tab */}
+        {visitedTabs['inventory'] && (
+          <div
+            style={{ display: currentTab === 'inventory' ? 'block' : 'none' }}
+            className={currentTab === 'inventory' ? 'animate-in fade-in duration-200' : ''}
+          >
+            <InventoryPage onNavigateToTab={handleNavigate} />
+          </div>
+        )}
+
+        {/* Purchase Orders Tab */}
+        {visitedTabs['purchase-orders'] && (
+          <div
+            style={{ display: currentTab === 'purchase-orders' ? 'block' : 'none' }}
+            className={currentTab === 'purchase-orders' ? 'animate-in fade-in duration-200' : ''}
+          >
             <PurchaseOrdersPage initialPreselectedSku={preselectedSku} />
-          )}
-          {currentTab === 'sales-orders' && <SalesOrdersPage />}
-          {currentTab === 'transfers' && <TransfersPage />}
-          {currentTab === 'ledger' && <LedgerPage />}
-          {currentTab === 'workspace' && <WorkspacePage />}
-        </motion.div>
-      </AnimatePresence>
+          </div>
+        )}
+
+        {/* Sales Orders Tab */}
+        {visitedTabs['sales-orders'] && (
+          <div
+            style={{ display: currentTab === 'sales-orders' ? 'block' : 'none' }}
+            className={currentTab === 'sales-orders' ? 'animate-in fade-in duration-200' : ''}
+          >
+            <SalesOrdersPage />
+          </div>
+        )}
+
+        {/* Stock Transfers Tab */}
+        {visitedTabs['transfers'] && (
+          <div
+            style={{ display: currentTab === 'transfers' ? 'block' : 'none' }}
+            className={currentTab === 'transfers' ? 'animate-in fade-in duration-200' : ''}
+          >
+            <TransfersPage />
+          </div>
+        )}
+
+        {/* Stock Ledger Tab */}
+        {visitedTabs['ledger'] && (
+          <div
+            style={{ display: currentTab === 'ledger' ? 'block' : 'none' }}
+            className={currentTab === 'ledger' ? 'animate-in fade-in duration-200' : ''}
+          >
+            <LedgerPage />
+          </div>
+        )}
+
+        {/* Workspace & Team Tab */}
+        {visitedTabs['workspace'] && (
+          <div
+            style={{ display: currentTab === 'workspace' ? 'block' : 'none' }}
+            className={currentTab === 'workspace' ? 'animate-in fade-in duration-200' : ''}
+          >
+            <WorkspacePage />
+          </div>
+        )}
+      </div>
     </Layout>
   );
 };

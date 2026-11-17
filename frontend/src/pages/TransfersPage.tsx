@@ -21,7 +21,7 @@ import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { useInventoryData } from '../context/InventoryDataContext';
-import { StockTransfer, Location, Product, TransferStatus } from '../types';
+import { StockTransfer, TransferStatus } from '../types';
 
 interface TransferItemInput {
   productId: string;
@@ -32,15 +32,13 @@ export const TransfersPage: React.FC = () => {
   const { user } = useAuth();
   const {
     transfers: storeTransfers,
-    locations: storeLocations,
-    products: storeProducts,
+    locations,
+    products,
     invalidate,
   } = useInventoryData();
   const isStaff = user?.role === 'STAFF';
 
   const [transfers, setTransfers] = useState<StockTransfer[]>(storeTransfers);
-  const [locations, setLocations] = useState<Location[]>(storeLocations);
-  const [products, setProducts] = useState<Product[]>(storeProducts);
   const [loading, setLoading] = useState(() => storeTransfers.length === 0);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,29 +66,20 @@ export const TransfersPage: React.FC = () => {
   }, [storeTransfers, selectedStatus, selectedSource, selectedDestination, searchQuery]);
 
   useEffect(() => {
-    if (storeLocations.length > 0) {
-      setLocations(storeLocations);
-      if (storeLocations.length >= 2 && !sourceId && !destinationId) {
-        setSourceId(storeLocations[0].id);
-        setDestinationId(storeLocations[1].id);
-      }
+    if (locations.length >= 2 && !sourceId && !destinationId) {
+      setSourceId(locations[0].id);
+      setDestinationId(locations[1].id);
     }
-  }, [storeLocations, sourceId, destinationId]);
-
-  useEffect(() => {
-    if (storeProducts.length > 0) {
-      setProducts(storeProducts);
-    }
-  }, [storeProducts]);
+  }, [locations, sourceId, destinationId]);
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const fetchTransfers = async () => {
+  const fetchTransfers = async (showSpinner = false) => {
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       setError(null);
 
       const params = new URLSearchParams();
@@ -107,31 +96,10 @@ export const TransfersPage: React.FC = () => {
     }
   };
 
-  const fetchDropdownData = async () => {
-    try {
-      const [locRes, prodRes] = await Promise.all([
-        api.get<{ locations: Location[] }>('/locations'),
-        api.get<{ products: Product[] }>('/products'),
-      ]);
-      setLocations(locRes.locations || []);
-      setProducts(prodRes.products || []);
-
-      if (locRes.locations && locRes.locations.length >= 2) {
-        setSourceId(locRes.locations[0].id);
-        setDestinationId(locRes.locations[1].id);
-      }
-    } catch (err) {
-      console.error('Failed to load locations or products for transfers', err);
-    }
-  };
-
   useEffect(() => {
-    fetchTransfers();
+    const shouldShowSpinner = transfers.length === 0 && storeTransfers.length === 0;
+    fetchTransfers(shouldShowSpinner);
   }, [selectedStatus, selectedSource, selectedDestination]);
-
-  useEffect(() => {
-    fetchDropdownData();
-  }, []);
 
   const handleAddItem = () => {
     setItems([...items, { productId: '', quantity: 1 }]);
@@ -319,7 +287,7 @@ export const TransfersPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={fetchTransfers} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={() => fetchTransfers(true)} disabled={loading}>
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
@@ -336,7 +304,7 @@ export const TransfersPage: React.FC = () => {
       {error && (
         <div className="p-4 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <Button variant="ghost" size="sm" onClick={fetchTransfers}>
+          <Button variant="ghost" size="sm" onClick={() => fetchTransfers(true)}>
             Retry
           </Button>
         </div>
