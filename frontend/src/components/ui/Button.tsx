@@ -18,7 +18,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseClasses =
-    'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0F17] disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0F17] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 select-none';
 
   const sizeClasses = {
     sm: 'text-xs px-2.5 py-1.5 gap-1.5',
@@ -27,11 +27,16 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   const variantClasses = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 shadow-sm shadow-blue-600/30',
-    secondary: 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 focus:ring-slate-500',
-    danger: 'bg-rose-600 hover:bg-rose-700 text-white focus:ring-rose-500 shadow-sm shadow-rose-600/30',
-    outline: 'border border-slate-700 hover:bg-slate-800 text-slate-300 focus:ring-slate-500',
-    ghost: 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 focus:ring-slate-500',
+    primary:
+      'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white focus-visible:ring-blue-500 shadow-sm shadow-blue-600/30',
+    secondary:
+      'bg-slate-800 hover:bg-slate-700 active:bg-slate-750 text-slate-200 border border-slate-750 focus-visible:ring-slate-500',
+    danger:
+      'bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white focus-visible:ring-rose-500 shadow-sm shadow-rose-600/30',
+    outline:
+      'border border-slate-700/80 hover:border-slate-600 hover:bg-slate-800/80 active:bg-slate-800 text-slate-300 focus-visible:ring-slate-500',
+    ghost:
+      'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 active:bg-slate-800/90 focus-visible:ring-slate-500',
   };
 
   return (

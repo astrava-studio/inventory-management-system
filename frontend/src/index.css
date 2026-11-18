@@ -3,23 +3,53 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: dark;
   --background: 222 47% 11%;
   --foreground: 210 40% 98%;
   --border: 217 33% 18%;
   --input: 217 33% 18%;
   --ring: 224 76% 48%;
+  
+  /* Semantic Design Tokens */
+  --canvas: #0B0F17;
+  --surface: #111827;
+  --surface-elevated: #1F2937;
+  --primary-accent: #2563EB;
+  --primary-accent-hover: #1D4ED8;
+  --border-subtle: #1E293B;
+  --border-strong: #334155;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
 }
 
 body {
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--canvas);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Numeric & currency tabular alignment */
 .tabular-nums {
   font-family: 'Geist Mono', monospace;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
-/* Custom scrollbars */
+/* Accessible focus visible outlines */
+:focus-visible {
+  outline: 2px solid var(--primary-accent);
+  outline-offset: 2px;
+}
+
+/* Micro-interaction tactile active state */
+.btn-press:active {
+  transform: scale(0.98);
+}
+
+/* Custom streamlined scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
