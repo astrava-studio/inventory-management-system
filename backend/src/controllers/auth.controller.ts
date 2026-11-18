@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
@@ -205,6 +206,131 @@ export const getMe = async (req: AuthenticatedRequest, res: Response, next: Next
         currency: user.tenant.currency,
         createdAt: user.createdAt,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const googleAuthSchema = z.object({
+  credential: z.string().min(1, 'Google credential token is required'),
+  workspaceName: z.string().trim().optional(),
+  currency: z.string().trim().length(3).optional().transform((v) => v?.toUpperCase()),
+});
+
+export const googleAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { credential, workspaceName, currency } = googleAuthSchema.parse(req.body);
+
+    // Verify token with Google's public endpoint
+    const googleVerifyRes = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`
+    );
+    if (!googleVerifyRes.ok) {
+      throw new AppError('Invalid or expired Google authentication credential', 401);
+    }
+
+    const googlePayload = (await googleVerifyRes.json()) as {
+      email?: string;
+      email_verified?: string | boolean;
+      name?: string;
+      sub?: string;
+      aud?: string;
+      picture?: string;
+    };
+
+    if (!googlePayload.email) {
+      throw new AppError('Google account does not have an associated email address', 400);
+    }
+
+    const emailVerified =
+      googlePayload.email_verified === 'true' || googlePayload.email_verified === true;
+    if (!emailVerified) {
+      throw new AppError('Google email address is not verified', 401);
+    }
+
+    const normalizedEmail = googlePayload.email.toLowerCase();
+
+    // Check if user already exists
+    let user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { tenant: true },
+    });
+
+    let tenant = user?.tenant;
+
+    if (!user) {
+      // Self-service registration via Google: Create isolated tenant + admin user + default warehouse
+      const defaultWorkspaceName =
+        workspaceName?.trim() || `${googlePayload.name || 'My'} Workspace`;
+      const defaultCurrency = currency || 'INR';
+      const randomPasswordHash = await bcrypt.hash(crypto.randomUUID(), 10);
+
+      const created = await prisma.$transaction(async (tx) => {
+        const newTenant = await tx.tenant.create({
+          data: {
+            name: defaultWorkspaceName,
+            currency: defaultCurrency,
+          },
+        });
+
+        const newUser = await tx.user.create({
+          data: {
+            tenantId: newTenant.id,
+            email: normalizedEmail,
+            fullName: googlePayload.name || normalizedEmail.split('@')[0],
+            passwordHash: randomPasswordHash,
+            role: 'ADMIN',
+            isActive: true,
+          },
+        });
+
+        await tx.location.create({
+          data: {
+            tenantId: newTenant.id,
+            code: 'WH-MAIN',
+            name: 'Main Fulfillment Hub',
+            address: 'Primary Logistics Distribution Center',
+            isActive: true,
+          },
+        });
+
+        return { tenant: newTenant, user: newUser };
+      });
+
+      user = created.user as any;
+      tenant = created.tenant;
+    } else if (!user.isActive) {
+      throw new AppError(
+        'Your account has been deactivated. Please contact your workspace administrator.',
+        403
+      );
+    }
+
+    if (!user) {
+      throw new AppError('Failed to resolve user account', 500);
+    }
+
+    if (!tenant) {
+      tenant = (await prisma.tenant.findUnique({ where: { id: user.tenantId } })) as any;
+    }
+
+    const payload: AuthUser = {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      tenantId: user.tenantId,
+      workspaceName: tenant?.name || 'Astrava Workspace',
+      currency: tenant?.currency || 'INR',
+    };
+
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+
+    res.json({
+      message: 'Google authentication successful',
+      token,
+      user: payload,
     });
   } catch (error) {
     next(error);
